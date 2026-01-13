@@ -1,29 +1,29 @@
 package com.rolando.komori.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Settings // Import Settings Icon
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -41,17 +41,20 @@ import com.rolando.komori.ui.components.TaskItem
 import com.rolando.komori.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlinx.coroutines.launch
+
+// --- PHOSPHOR ICONS IMPORTS (BOLD) ---
+import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Bold
+import com.adamglin.phosphoricons.bold.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TasksScreen(
-    navController: NavController, // Added NavController for Settings
+    navController: NavController,
     viewModel: TaskViewModel = viewModel(factory = TaskViewModel.Factory)
 ) {
     val taskList by viewModel.allTasks.collectAsState()
-    val activeTasks = taskList.filter { !it.isCompleted }
-    val completedTasks = taskList.filter { it.isCompleted }
-
     var showDialog by remember { mutableStateOf(false) }
     var isCompletedExpanded by remember { mutableStateOf(false) }
 
@@ -65,11 +68,22 @@ fun TasksScreen(
     var selectedTask by remember { mutableStateOf<Task?>(null) }
 
     val isDark = isSystemInDarkTheme()
-    // Determine button background colors based on theme
     val buttonBgColor = if (isDark) Color(0xFF333333) else MistGreen
-    // Determine dialog background color (slightly lighter than background for elevation)
     val dialogSurfaceColor = MaterialTheme.colorScheme.surfaceContainerHigh
     val dialogTextColor = MaterialTheme.colorScheme.onSurface
+
+    // --- NAVIGATION STATE (PAGER) ---
+    val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(initialPage = 1) { 4 }
+    val currentScreen = AppScreen.entries[pagerState.currentPage]
+
+    val activeTasks = remember(taskList) {
+        taskList.filter { !it.isCompleted }
+    }
+
+    val completedTasks = remember(taskList) {
+        taskList.filter { it.isCompleted }
+    }
 
     fun formatDate(timestamp: Long?): String {
         if (timestamp == null) return "Pick a Date"
@@ -78,28 +92,32 @@ fun TasksScreen(
     }
 
     Scaffold(
-        // 1. Dynamic Background Color
         containerColor = MaterialTheme.colorScheme.background,
 
+        // --- DYNAMIC HEADER ---
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        text = "Tasks",
-                        style = MaterialTheme.typography.headlineMedium.copy(
+                        text = when (currentScreen) {
+                            AppScreen.Calendar -> "Schedule"
+                            AppScreen.Tasks -> "My Focus"
+                            AppScreen.Habits -> "Rituals"
+                            AppScreen.Notes -> "Notes"
+                        },
+                        style = MaterialTheme.typography.titleLarge.copy(
                             fontFamily = AppFont,
                             fontWeight = FontWeight.Bold
                         ),
-                        // 2. Dynamic Text Color (White/Black)
                         color = MaterialTheme.colorScheme.onBackground
                     )
                 },
                 actions = {
                     IconButton(onClick = { navController.navigate("settings") }) {
                         Icon(
-                            imageVector = Icons.Default.Settings,
+                            // PHOSPHOR BOLD: Gear
+                            imageVector = PhosphorIcons.Bold.Gear,
                             contentDescription = "Settings",
-                            // 3. Dynamic Icon Color
                             tint = MaterialTheme.colorScheme.onBackground
                         )
                     }
@@ -110,128 +128,209 @@ fun TasksScreen(
                 )
             )
         },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = {
-                    newTaskTitle = ""
-                    newTaskDetails = ""
-                    newTaskTime = null
-                    newTaskDate = null
-                    showDialog = true
-                },
-                containerColor = SageGreen,
-                contentColor = Color.White,
-                shape = RoundedCornerShape(16.dp),
-                elevation = FloatingActionButtonDefaults.elevation(4.dp, 2.dp),
-                modifier = Modifier.size(64.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "New Focus", modifier = Modifier.size(28.dp))
-            }
-        }
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 100.dp) // Extra space at bottom
-        ) {
-            // --- ACTIVE TASKS SECTION ---
-            if (activeTasks.isNotEmpty()) {
-                item { SectionHeader("ACTIVE FOCUS") }
 
-                // THIS IS THE NEW CONTAINER (The big white rounded box)
-                item {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp), // Side padding for the container
-                        shape = RoundedCornerShape(24.dp), // Big rounded corners
-                        // White in Light Mode, Dark Grey in Dark Mode
-                        color = MaterialTheme.colorScheme.surface,
-                        shadowElevation = 0.dp // Flat look (or add 2.dp if you want a shadow)
-                    ) {
-                        Column {
-                            activeTasks.forEachIndexed { index, task ->
-                                TaskItem(
-                                    task = task,
-                                    onCheckedChange = { isChecked ->
-                                        viewModel.toggleTask(task, isChecked)
-                                    },
-                                    // CHANGE: Open the dialog with this task
-                                    onItemClick = { selectedTask = task },
-                                    showDivider = index < activeTasks.lastIndex
-                                )
+        // --- FLOATING DOCK & FAB ---
+        floatingActionButtonPosition = FabPosition.Center,
+        floatingActionButton = {
+
+            val dockBias by animateFloatAsState(
+                targetValue = if (currentScreen == AppScreen.Tasks) -1f else 0f,
+                animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+                label = "DockPosition"
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+
+                // --- NAVIGATION DOCK ---
+                Box(
+                    modifier = Modifier.align(
+                        BiasAlignment(
+                            horizontalBias = dockBias,
+                            verticalBias = 0f
+                        )
+                    )
+                ) {
+                    FloatingNavBar(
+                        currentScreen = currentScreen,
+                        onScreenSelected = { screen ->
+                            scope.launch {
+                                pagerState.animateScrollToPage(screen.ordinal)
                             }
+                        }
+                    )
+                }
+
+                // --- FAB CONTAINER ---
+                Box(
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                ) {
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = currentScreen == AppScreen.Tasks,
+                        enter = slideInVertically(
+                            initialOffsetY = { it * 2 },
+                            animationSpec = tween(durationMillis = 500, delayMillis = 450)
+                        ) + fadeIn(
+                            animationSpec = tween(durationMillis = 500, delayMillis = 450)
+                        ),
+                        exit = slideOutVertically(
+                            targetOffsetY = { it * 2 },
+                            animationSpec = tween(durationMillis = 300)
+                        ) + fadeOut(
+                            animationSpec = tween(durationMillis = 300)
+                        )
+                    ) {
+                        FloatingActionButton(
+                            onClick = {
+                                newTaskTitle = ""
+                                newTaskDetails = ""
+                                newTaskTime = null
+                                newTaskDate = null
+                                showDialog = true
+                            },
+                            containerColor = SageGreen,
+                            contentColor = Color.White,
+                            shape = RoundedCornerShape(16.dp),
+                            elevation = FloatingActionButtonDefaults.elevation(4.dp, 2.dp),
+                            modifier = Modifier.size(64.dp)
+                        ) {
+                            Icon(
+                                // PHOSPHOR BOLD: Plus
+                                imageVector = PhosphorIcons.Bold.Plus,
+                                contentDescription = "New Focus",
+                                modifier = Modifier.size(32.dp)
+                            )
                         }
                     }
                 }
-            } else {
-                // Empty State
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillParentMaxWidth()
-                            .height(400.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "No focus yet.\nTap + to start.",
-                            color = StoneGray,
-                            style = MaterialTheme.typography.bodyLarge,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                    }
-                }
             }
+        }
+    ) { innerPadding ->
 
-            // --- COMPLETED TASKS SECTION ---
-            if (completedTasks.isNotEmpty()) {
-                item {
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { isCompletedExpanded = !isCompletedExpanded }
-                            .padding(horizontal = 24.dp, vertical = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("COMPLETED (${completedTasks.size})", style = MaterialTheme.typography.labelMedium, color = StoneGray)
-                        Spacer(modifier = Modifier.weight(1f))
-                        Icon(
-                            if (isCompletedExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            "Expand",
-                            tint = StoneGray
-                        )
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize(),
+            beyondViewportPageCount = 3
+        ) { pageIndex ->
+
+            when (AppScreen.entries[pageIndex]) {
+                AppScreen.Calendar -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Calendar / Schedule Coming Soon", color = StoneGray)
                     }
                 }
 
-                if (isCompletedExpanded) {
-                    // We can reuse the same container style for completed tasks if you want
-                    item {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                            shape = RoundedCornerShape(24.dp),
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f) // Slightly transparent/dim
-                        ) {
-                            Column {
-                                completedTasks.forEachIndexed { index, task ->
-                                    TaskItem(
-                                        task = task,
-                                        onCheckedChange = { isChecked -> viewModel.toggleTask(task, isChecked) },
-                                        // CHANGE: Open the dialog here too
-                                        onItemClick = { selectedTask = task },
-                                        showDivider = index < completedTasks.lastIndex
+                AppScreen.Tasks -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 100.dp)
+                    ) {
+                        if (activeTasks.isEmpty()) {
+                            item {
+                                Box(
+                                    modifier = Modifier.fillParentMaxSize().padding(bottom = 100.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "No focus yet.\nTap + to start.",
+                                        color = StoneGray,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                                     )
+                                }
+                            }
+                        } else {
+                            item { SectionHeader("ACTIVE FOCUS") }
+                            item {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                                    shape = RoundedCornerShape(24.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    shadowElevation = 0.dp
+                                ) {
+                                    Column {
+                                        activeTasks.forEachIndexed { index, task ->
+                                            TaskItem(
+                                                task = task,
+                                                onCheckedChange = { isChecked -> viewModel.toggleTask(task, isChecked) },
+                                                onItemClick = { selectedTask = task },
+                                                showDivider = index < activeTasks.lastIndex
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (completedTasks.isNotEmpty()) {
+                            item {
+                                Spacer(modifier = Modifier.height(24.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { isCompletedExpanded = !isCompletedExpanded }
+                                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("COMPLETED (${completedTasks.size})", style = MaterialTheme.typography.labelMedium, color = StoneGray)
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    Icon(
+                                        // PHOSPHOR BOLD: CaretUp / CaretDown
+                                        imageVector = if (isCompletedExpanded) PhosphorIcons.Bold.CaretUp else PhosphorIcons.Bold.CaretDown,
+                                        contentDescription = "Expand",
+                                        tint = StoneGray
+                                    )
+                                }
+                            }
+                            if (isCompletedExpanded) {
+                                item {
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                                        shape = RoundedCornerShape(24.dp),
+                                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                                    ) {
+                                        Column {
+                                            completedTasks.forEachIndexed { index, task ->
+                                                TaskItem(
+                                                    task = task,
+                                                    onCheckedChange = { isChecked -> viewModel.toggleTask(task, isChecked) },
+                                                    onItemClick = { selectedTask = task },
+                                                    showDivider = index < completedTasks.lastIndex
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
+
+                AppScreen.Habits -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Habit Tracker Coming Soon", color = StoneGray)
+                        }
+                    }
+                }
+
+                AppScreen.Notes -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Notes & Habits Coming Soon", color = StoneGray)
+                    }
+                }
             }
+
         }
+
     }
 
-    // --- TASK DETAILS POPUP ---
     if (selectedTask != null) {
         TaskDetailDialog(
             task = selectedTask!!,
@@ -240,20 +339,17 @@ fun TasksScreen(
                 viewModel.deleteTask(selectedTask!!)
                 selectedTask = null
             },
-            // NEW: Handle the save action
             onSave = { updatedTask ->
                 viewModel.updateTask(updatedTask)
-                selectedTask = null // Close dialog after saving
+                selectedTask = null
             }
         )
     }
 
     // --- MAIN ADD TASK DIALOG ---
     if (showDialog) {
-
-        // FIX: Calculate button color based on APP theme, not System theme
         val isAppInDarkMode = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-        val buttonBgColor = if (isAppInDarkMode) Color(0xFF333333) else MistGreen
+        val currentButtonColor = if (isAppInDarkMode) Color(0xFF333333) else MistGreen
 
         Dialog(
             onDismissRequest = { showDialog = false },
@@ -261,7 +357,7 @@ fun TasksScreen(
         ) {
             Surface(
                 shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh, // Adapts to theme
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier.fillMaxWidth(0.94f).padding(16.dp)
             ) {
                 Column(
@@ -277,7 +373,6 @@ fun TasksScreen(
                     )
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // Inputs (These use the fixed CalmInputTextField we just wrote)
                     CalmInputTextField(
                         value = newTaskTitle,
                         onValueChange = { newTaskTitle = it },
@@ -295,7 +390,6 @@ fun TasksScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // --- DATE & TIME BUTTONS ROW ---
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
@@ -305,13 +399,18 @@ fun TasksScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(buttonBgColor) // <--- Uses the Fixed Color
+                                .background(currentButtonColor)
                                 .clickable { showDatePicker = true }
                                 .padding(vertical = 16.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Center
                         ) {
-                            Icon(Icons.Default.DateRange, contentDescription = null, tint = SageGreen)
+                            Icon(
+                                // PHOSPHOR BOLD: CalendarBlank
+                                imageVector = PhosphorIcons.Bold.CalendarBlank,
+                                contentDescription = null,
+                                tint = SageGreen
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = if (newTaskDate != null) formatDate(newTaskDate) else "Date",
@@ -327,13 +426,18 @@ fun TasksScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(16.dp))
-                                .background(buttonBgColor) // <--- Uses the Fixed Color
+                                .background(currentButtonColor)
                                 .clickable { showTimePicker = true }
                                 .padding(vertical = 16.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Center
                         ) {
-                            Icon(Icons.Default.Schedule, contentDescription = null, tint = SageGreen)
+                            Icon(
+                                // PHOSPHOR BOLD: Clock
+                                imageVector = PhosphorIcons.Bold.Clock,
+                                contentDescription = null,
+                                tint = SageGreen
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = newTaskTime ?: "Time",
@@ -345,7 +449,6 @@ fun TasksScreen(
 
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    // 1. "Add Focus" Button - Wide and Green
                     Button(
                         onClick = {
                             if (newTaskTitle.isNotBlank()) {
@@ -358,10 +461,7 @@ fun TasksScreen(
                             contentColor = Color.White
                         ),
                         shape = RoundedCornerShape(16.dp),
-                        // FIX: fillMaxWidth() makes it occupy the full container width
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
                         elevation = ButtonDefaults.buttonElevation(0.dp)
                     ) {
                         Text(
@@ -372,11 +472,10 @@ fun TasksScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // 2. "Not now" Button - Subtle Text
                     TextButton(
                         onClick = { showDialog = false },
                         colors = ButtonDefaults.textButtonColors(contentColor = StoneGray),
-                        modifier = Modifier.fillMaxWidth() // Optional: Makes the click area wide too
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
                             text = "Not now",
@@ -388,19 +487,15 @@ fun TasksScreen(
         }
     }
 
-    // --- 2. DATE PICKER DIALOG (Redesigned for Dark/Light) ---
+    // --- DIALOG PICKERS ---
     if (showDatePicker) {
         val datePickerState = rememberDatePickerState()
-
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
-            // FIX: Ensures dialog isn't narrow
             properties = DialogProperties(usePlatformDefaultWidth = false),
-            colors = DatePickerDefaults.colors(
-                containerColor = dialogSurfaceColor, // Adapts automatically
-            ),
+            colors = DatePickerDefaults.colors(containerColor = dialogSurfaceColor),
             shape = RoundedCornerShape(28.dp),
-            modifier = Modifier.fillMaxWidth(0.88f), // Matches other dialogs
+            modifier = Modifier.fillMaxWidth(0.88f),
             confirmButton = {
                 TextButton(onClick = {
                     newTaskDate = datePickerState.selectedDateMillis
@@ -414,34 +509,24 @@ fun TasksScreen(
             DatePicker(
                 state = datePickerState,
                 colors = DatePickerDefaults.colors(
-                    // Header colors
                     titleContentColor = StoneGray,
-                    headlineContentColor = dialogTextColor, // Dynamic text color
-
-                    // Calendar colors
+                    headlineContentColor = dialogTextColor,
                     weekdayContentColor = StoneGray,
                     subheadContentColor = dialogTextColor,
                     yearContentColor = dialogTextColor,
                     dayContentColor = dialogTextColor,
-
-                    // Accent colors
                     todayContentColor = SageGreen,
                     todayDateBorderColor = SageGreen,
                     selectedDayContainerColor = SageGreen,
                     selectedDayContentColor = Color.White,
-
-                    // Dark mode specific adjustments for navigation icons
                     navigationContentColor = dialogTextColor
                 )
             )
         }
     }
 
-    // --- TIME PICKER DIALOG (Fixed) ---
     if (showTimePicker) {
         val timeState = rememberTimePickerState()
-
-        // Check APP theme brightness to decide colors
         val isAppInDarkMode = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
         Dialog(
@@ -450,53 +535,34 @@ fun TasksScreen(
         ) {
             Surface(
                 shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh, // Adapts to theme
-                modifier = Modifier
-                    .fillMaxWidth(0.94f) // FIX: Forces wide width matching Date Picker
-                    .padding(16.dp)
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth(0.94f).padding(16.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        "Select time",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Text("Select time", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                     Spacer(modifier = Modifier.height(24.dp))
-
                     TimePicker(
                         state = timeState,
                         colors = TimePickerDefaults.colors(
-                            // FIX: Light Mode = MistGreen, Dark Mode = Dark Gray
                             clockDialColor = if (isAppInDarkMode) Color(0xFF444444) else MistGreen,
-
                             clockDialSelectedContentColor = Color.White,
-
-                            // Unselected numbers: White in Dark Mode, Black in Light Mode
                             clockDialUnselectedContentColor = MaterialTheme.colorScheme.onSurface,
-
-                            // Hands & Selection Bubbles
                             selectorColor = SageGreen,
                             periodSelectorBorderColor = SageGreen,
                             periodSelectorSelectedContainerColor = SageGreen.copy(alpha = 0.2f),
                             periodSelectorSelectedContentColor = SageGreen,
-
-                            // AM/PM Text: White in Dark Mode, Black in Light Mode
                             periodSelectorUnselectedContentColor = MaterialTheme.colorScheme.onSurface
                         )
                     )
-
                     Spacer(modifier = Modifier.height(24.dp))
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End
                     ) {
-                        TextButton(onClick = { showTimePicker = false }) {
-                            Text("Cancel", color = StoneGray)
-                        }
+                        TextButton(onClick = { showTimePicker = false }) { Text("Cancel", color = StoneGray) }
                         TextButton(onClick = {
                             val cal = Calendar.getInstance()
                             cal.set(Calendar.HOUR_OF_DAY, timeState.hour)
@@ -504,9 +570,7 @@ fun TasksScreen(
                             val sdf = SimpleDateFormat("hh:mm a", Locale.getDefault())
                             newTaskTime = sdf.format(cal.time)
                             showTimePicker = false
-                        }) {
-                            Text("OK", color = SageGreen)
-                        }
+                        }) { Text("OK", color = SageGreen) }
                     }
                 }
             }
@@ -514,6 +578,7 @@ fun TasksScreen(
     }
 }
 
+// ... CalmInputTextField ...
 @Composable
 fun CalmInputTextField(
     value: String,
@@ -523,11 +588,7 @@ fun CalmInputTextField(
     minLines: Int = 1,
     maxLines: Int = 1
 ) {
-    // Check App Theme
     val isAppInDarkMode = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-
-    // COLORS:
-    // Light Mode = NatureWhite. Dark Mode = Dark Charcoal.
     val inputBoxColor = if (isAppInDarkMode) Color(0xFF333333) else NatureWhite
     val textColor = MaterialTheme.colorScheme.onSurface
     val placeholderColor = StoneGray
@@ -574,38 +635,23 @@ fun TaskDetailDialog(
     onDelete: () -> Unit,
     onSave: (Task) -> Unit
 ) {
-    // --- STATE ---
     var editedTitle by remember { mutableStateOf(task.title) }
     var editedDetails by remember { mutableStateOf(task.details) }
     var editedDate by remember { mutableStateOf(task.dueDate) }
     var editedTime by remember { mutableStateOf(task.dueTime) }
-
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
 
-    // --- THEME & COLORS ---
     val isAppInDarkMode = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-
     val dialogBgColor = MaterialTheme.colorScheme.surfaceContainerHigh
     val mainTextColor = MaterialTheme.colorScheme.onSurface
-
-    // 1. INPUT CONTAINER COLOR (Updated)
-    // Light Mode: Uses NatureWhite as requested.
-    // Dark Mode: Uses Dark Charcoal (#333333) for readability.
     val genericContainerColor = if (isAppInDarkMode) Color(0xFF333333) else NatureWhite
-
-    // Icon/Text inside generic containers
     val genericContentColor = if (isAppInDarkMode) Color(0xFFE0E0E0) else Color(0xFF2E7D32)
-
-    // Status Colors
     val statusBg = Color(0xFFFFE6BA).copy(alpha = if (isAppInDarkMode) 0.8f else 0.6f)
     val statusText = Color(0xFF6B4E18)
-
-    // Delete Button Colors
     val deleteBg = if (isAppInDarkMode) Color(0xFF5A1D1D) else Color(0xFFFFCDD2)
     val deleteText = if (isAppInDarkMode) Color(0xFFFFB4AB) else Color(0xFFC62828)
 
-    // Formatters
     val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
     val dateString = if (editedDate != null) dateFormat.format(Date(editedDate!!)) else "Set Date"
     val timeString = editedTime ?: "Set Time"
@@ -618,14 +664,10 @@ fun TaskDetailDialog(
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = dialogBgColor,
-            modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .padding(16.dp)
+            modifier = Modifier.fillMaxWidth(0.92f).padding(16.dp)
         ) {
             Column(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .verticalScroll(rememberScrollState())
+                modifier = Modifier.padding(24.dp).verticalScroll(rememberScrollState())
             ) {
                 // 1. HEADER ROW
                 Row(
@@ -656,7 +698,8 @@ fun TaskDetailDialog(
                     )
 
                     Icon(
-                        imageVector = Icons.Default.Close,
+                        // PHOSPHOR BOLD: X (Close)
+                        imageVector = PhosphorIcons.Bold.X,
                         contentDescription = "Close",
                         tint = if (isAppInDarkMode) Color.LightGray else Color.Gray,
                         modifier = Modifier
@@ -669,7 +712,6 @@ fun TaskDetailDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 2. DETAILS INPUT BOX (Uses NatureWhite)
                 TextField(
                     value = editedDetails,
                     onValueChange = { editedDetails = it },
@@ -680,7 +722,7 @@ fun TaskDetailDialog(
                     ),
                     shape = RoundedCornerShape(16.dp),
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = genericContainerColor, // <--- Using NatureWhite here
+                        focusedContainerColor = genericContainerColor,
                         unfocusedContainerColor = genericContainerColor,
                         disabledContainerColor = genericContainerColor,
                         focusedIndicatorColor = Color.Transparent,
@@ -689,24 +731,20 @@ fun TaskDetailDialog(
                         focusedTextColor = mainTextColor,
                         unfocusedTextColor = mainTextColor
                     ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 120.dp)
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp)
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // 4. DATE & TIME ROW (Uses NatureWhite)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Date Button
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(genericContainerColor) // <--- Using NatureWhite here
+                            .background(genericContainerColor)
                             .clickable { showDatePicker = true }
                             .padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center
@@ -721,12 +759,11 @@ fun TaskDetailDialog(
                         )
                     }
 
-                    // Time Button
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(genericContainerColor) // <--- Using NatureWhite here
+                            .background(genericContainerColor)
                             .clickable { showTimePicker = true }
                             .padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center
@@ -744,8 +781,6 @@ fun TaskDetailDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-
-                // 3. STATUS ROW
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Start
@@ -768,12 +803,8 @@ fun TaskDetailDialog(
                     }
                 }
 
-
-
-
                 Spacer(modifier = Modifier.height(32.dp))
 
-                // 5. SAVE BUTTON
                 Button(
                     onClick = {
                         val updatedTask = task.copy(
@@ -803,7 +834,6 @@ fun TaskDetailDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // 6. DELETE BUTTON
                 Button(
                     onClick = onDelete,
                     colors = ButtonDefaults.buttonColors(
@@ -826,7 +856,7 @@ fun TaskDetailDialog(
         }
     }
 
-    // --- PICKERS (Date & Time code remains the same) ---
+    // --- REUSED DATE/TIME PICKERS (For Edit Dialog) ---
     if (showDatePicker) {
         val datePickerState = rememberDatePickerState(initialSelectedDateMillis = editedDate)
         DatePickerDialog(
@@ -882,7 +912,6 @@ fun TaskDetailDialog(
     }
 }
 
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TimePickerDialog(
@@ -919,4 +948,87 @@ fun TimePickerDialog(
             }
         }
     }
+}
+
+@Composable
+fun FloatingNavBar(
+    currentScreen: AppScreen,
+    onScreenSelected: (AppScreen) -> Unit
+) {
+    val isAppInDarkMode = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val dockColor = if (isAppInDarkMode) Color(0xFF333333) else Color.White
+    val inactiveIconColor = if (isAppInDarkMode) Color.LightGray else StoneGray
+
+    Surface(
+        color = dockColor,
+        shape = RoundedCornerShape(20.dp),
+        shadowElevation = 4.dp,
+        modifier = Modifier.height(64.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // 1. Calendar
+            NavBarIcon(
+                // PHOSPHOR BOLD: CalendarBlank
+                icon = PhosphorIcons.Bold.CalendarBlank,
+                isSelected = currentScreen == AppScreen.Calendar,
+                inactiveColor = inactiveIconColor,
+                onClick = { onScreenSelected(AppScreen.Calendar) }
+            )
+
+            // 2. Tasks
+            NavBarIcon(
+                // PHOSPHOR BOLD: CheckCircle
+                icon = PhosphorIcons.Bold.CheckCircle,
+                isSelected = currentScreen == AppScreen.Tasks,
+                inactiveColor = inactiveIconColor,
+                onClick = { onScreenSelected(AppScreen.Tasks) }
+            )
+
+            // 3. Habits
+            NavBarIcon(
+                // PHOSPHOR BOLD: Repeat
+                icon = PhosphorIcons.Bold.Repeat,
+                isSelected = currentScreen == AppScreen.Habits,
+                inactiveColor = inactiveIconColor,
+                onClick = { onScreenSelected(AppScreen.Habits) }
+            )
+
+            // 4. Notes
+            NavBarIcon(
+                // PHOSPHOR BOLD: Notepad
+                icon = PhosphorIcons.Bold.Notepad,
+                isSelected = currentScreen == AppScreen.Notes,
+                inactiveColor = inactiveIconColor,
+                onClick = { onScreenSelected(AppScreen.Notes) }
+            )
+        }
+    }
+}
+
+@Composable
+fun NavBarIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isSelected: Boolean,
+    inactiveColor: Color,
+    onClick: () -> Unit
+) {
+    IconButton(onClick = onClick) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (isSelected) SageGreen else inactiveColor,
+            modifier = Modifier.size(28.dp)
+        )
+    }
+}
+
+enum class AppScreen {
+    Calendar,
+    Tasks,
+    Habits,
+    Notes
 }

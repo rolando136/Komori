@@ -10,6 +10,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.rolando.komori.data.ThemeManager
 import com.rolando.komori.ui.screens.SettingsScreen
+import com.rolando.komori.ui.screens.SplashScreen
 import com.rolando.komori.ui.screens.TasksScreen
 import com.rolando.komori.ui.theme.KomoriTheme
 
@@ -17,27 +18,26 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Initialize Theme Manager
         val themeManager = ThemeManager(applicationContext)
 
         setContent {
-            // 1. Listen to the stored theme preference
             val isDarkTheme by themeManager.isDarkTheme.collectAsState(initial = false)
 
-            // 2. Apply the theme to the WHOLE app
             KomoriTheme(darkTheme = isDarkTheme) {
-
-                // 3. Setup Navigation
                 val navController = rememberNavController()
 
-                NavHost(navController = navController, startDestination = "tasks") {
+                // START DESTINATION IS SPLASH
+                NavHost(navController = navController, startDestination = "splash") {
 
-                    // Main Screen
-                    composable("tasks") {
+                    composable("splash") {
+                        SplashScreen(navController = navController)
+                    }
+
+                    // Route must match what we called in SplashScreen ("home")
+                    composable("home") {
                         TasksScreen(navController = navController)
                     }
 
-                    // Settings Screen
                     composable("settings") {
                         SettingsScreen(navController = navController)
                     }

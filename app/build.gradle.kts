@@ -82,4 +82,8 @@ dependencies {
 
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.navigation.compose)
-}
+    implementation("androidx.compose.material:material-icons-extended:1.7.0") // Check for latest version
+
+    implementation("com.adamglin:phosphor-icon-android:1.0.0")
+    }
+
