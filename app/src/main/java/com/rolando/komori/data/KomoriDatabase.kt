@@ -4,21 +4,26 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 
-@Database(entities = [Task::class], version = 1, exportSchema = false)
+// CHANGE VERSION FROM 2 -> 3
+@Database(entities = [Task::class, WeeklyEvent::class], version = 4, exportSchema = false)
+@TypeConverters(Converters::class)
 abstract class KomoriDatabase : RoomDatabase() {
 
     abstract fun taskDao(): TaskDao
+    abstract fun weeklyEventDao(): WeeklyEventDao
 
     companion object {
         @Volatile
         private var Instance: KomoriDatabase? = null
 
         fun getDatabase(context: Context): KomoriDatabase {
-            // If instance exists, return it. If not, create it.
             return Instance ?: synchronized(this) {
                 Room.databaseBuilder(context, KomoriDatabase::class.java, "komori_database")
-                    .fallbackToDestructiveMigration() // Wipes data if you change the table structure
+                    // This line is crucial during dev: it allows Room to destroy the old DB
+                    // and create a new empty one if the versions don't match.
+                    .fallbackToDestructiveMigration()
                     .build()
                     .also { Instance = it }
             }

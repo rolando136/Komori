@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember // Import Remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,17 +30,27 @@ fun TaskItem(
     onItemClick: () -> Unit,
     showDivider: Boolean = true
 ) {
-    // Determine Dark Mode based on the APP'S current colors
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-
     val titleColor = MaterialTheme.colorScheme.onSurface
     val greenAccent = SageGreen
     val circleBorderColor = if (isDark) Color.Gray else Color(0xFFC5C5C5)
 
-    fun getFormattedDate(timestamp: Long?): String {
-        if (timestamp == null) return ""
-        val sdf = SimpleDateFormat("MMM dd", Locale.getDefault())
-        return sdf.format(Date(timestamp))
+    // PERFORMANCE FIX:
+    // Create the formatter once and remember it.
+    // This stops the "lag" caused by creating heavy objects during scrolling/swiping.
+    val dateFormatter = remember { SimpleDateFormat("MMM dd", Locale.getDefault()) }
+    val dateText = if (task.dueDate != null) dateFormatter.format(Date(task.dueDate)) else ""
+
+    // Helper logic to format text efficiently
+    val dateTimeString = remember(task.dueDate, task.dueTime) {
+        val datePart = if (task.dueDate != null) dateFormatter.format(Date(task.dueDate)) else ""
+        val timePart = task.dueTime ?: ""
+
+        buildString {
+            if (datePart.isNotEmpty()) append(datePart)
+            if (datePart.isNotEmpty() && timePart.isNotEmpty()) append(" • ")
+            if (timePart.isNotEmpty()) append(timePart)
+        }
     }
 
     Column(
@@ -49,11 +60,10 @@ fun TaskItem(
             .background(Color.Transparent)
     ) {
         Row(
-            // CHANGE: Increased vertical padding to 24.dp for a wider, cleaner look
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 1. Radio Style Checkbox
+            // 1. Checkbox
             Box(
                 modifier = Modifier
                     .size(28.dp)
@@ -93,35 +103,22 @@ fun TaskItem(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                // Date & Time
-                if (task.dueDate != null || task.dueTime != null) {
-                    Spacer(modifier = Modifier.height(6.dp)) // Slightly more space between title and date
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-
-                        val dateText = getFormattedDate(task.dueDate)
-                        val timeText = task.dueTime ?: ""
-
-                        val fullText = buildString {
-                            if (dateText.isNotEmpty()) append(dateText)
-                            if (dateText.isNotEmpty() && timeText.isNotEmpty()) append(" • ")
-                            if (timeText.isNotEmpty()) append(timeText)
-                        }
-
-                        Text(
-                            text = fullText,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Medium,
-                                fontFamily = AppFont,
-                                fontSize = 12.sp
-                            ),
-                            color = if (task.isCompleted) StoneGray else greenAccent
-                        )
-                    }
+                // 3. Date & Time (Optimized)
+                if (dateTimeString.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = dateTimeString,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = AppFont,
+                            fontSize = 12.sp
+                        ),
+                        color = if (task.isCompleted) StoneGray else greenAccent
+                    )
                 }
             }
         }
 
-        // 3. Divider Line
         if (showDivider) {
             HorizontalDivider(
                 modifier = Modifier.padding(horizontal = 24.dp),

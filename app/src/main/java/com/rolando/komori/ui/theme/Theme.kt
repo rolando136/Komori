@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import android.graphics.drawable.ColorDrawable
 
 // --- COLOR DEFINITIONS ---
 
@@ -26,7 +27,7 @@ private val DarkColorScheme = darkColorScheme(
     surfaceContainerHigh = Color(0xFF2C2C2C), // Lighter Grey for Dialogs
     onBackground = NatureWhite,           // Text is white
     onSurface = NatureWhite,
-    onPrimary = Color.White
+    onPrimary = Color.White,
 )
 
 // 2. Light Mode Palette
@@ -42,10 +43,8 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun KomoriTheme(
-    // This 'darkTheme' boolean comes from your MainActivity/Settings
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = false, // Set to false to force YOUR colors (SageGreen etc)
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -62,13 +61,13 @@ fun KomoriTheme(
         SideEffect {
             val window = (view.context as Activity).window
 
-            // 1. Set Status Bar Color to match the App Background
-            window.statusBarColor = colorScheme.background.toArgb()
-
-            // 2. Control the Icon Colors (Time, Battery)
-            // If Dark Theme is ON, we want LIGHT icons (isAppearanceLightStatusBars = false)
-            // If Dark Theme is OFF, we want DARK icons (isAppearanceLightStatusBars = true)
+            // 1. Set Icon Colors (Existing logic)
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+
+            // 2. NEW FIX: Force Window Background to match the App Theme
+            // This ensures that even if System is Dark, the underlying window turns White
+            // when your App is in Light Mode. This fixes the "Black Fade".
+            window.setBackgroundDrawable(ColorDrawable(colorScheme.background.toArgb()))
         }
     }
 
