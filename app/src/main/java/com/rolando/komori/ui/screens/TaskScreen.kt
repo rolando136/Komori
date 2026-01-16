@@ -245,57 +245,82 @@ fun TasksScreen(
                     else -> 64.dp
                 }
 
-                // --- PRE-CALCULATE DOCK WIDTH ---
+                // --- A. CALCULATE WIDTHS ---
                 val dockHeight = fabSize
                 val iconSize = dockHeight * 0.45f
-                val verticalSpace = (dockHeight - iconSize) / 2
-                val sidePadding = verticalSpace * 2
                 val buttonWidth = iconSize + 24.dp
                 val spacing = 4.dp
                 val itemCount = 4
-                val dockWidth = (buttonWidth * itemCount) + (spacing * (itemCount - 1)) + (sidePadding * 2)
+
+                val verticalSpace = (dockHeight - iconSize) / 2
+                val sidePadding = verticalSpace * 2
+                val internalButtonSpace = (buttonWidth - iconSize) / 2
+                val rowPadding = (sidePadding - internalButtonSpace).coerceAtLeast(0.dp)
+
+                // 1. Ideal Width (Full size needed for all icons)
+                val idealDockWidth = (buttonWidth * itemCount) + (spacing * (itemCount - 1)) + (rowPadding * 2)
+
+                // 2. Constraints
+                val screenEdgePadding = 16.dp
+                val gapSize = 8.dp
+
+                // 3. Calculate "Clamped" Width (When FAB is Visible)
+                // We sacrifice width to make room for the FAB
+                val maxWithFab = screenWidth.dp - (screenEdgePadding * 2) - fabSize - gapSize
+                val clampedDockWidth = minOf(idealDockWidth, maxWithFab)
+
+                // 4. Calculate "Expanded" Width (When FAB is Hidden)
+                // We use all available screen space (minus edges)
+                val maxWithoutFab = screenWidth.dp - (screenEdgePadding * 2)
+                val expandedDockWidth = minOf(idealDockWidth, maxWithoutFab)
 
                 // 2. ANIMATION STATE
                 val isFabVisible = currentScreen == AppScreen.Tasks || currentScreen == AppScreen.Calendar
                 val transition = updateTransition(targetState = isFabVisible, label = "FabTransition")
 
-                // FIX: Reduced gap from 12.dp to 8.dp
-                val gapSize = 0.dp
+                // --- B. ANIMATIONS ---
 
-                // A. Dock Slide (Moves Left)
+                // 1. Dock Width Animation (NEW)
+                // Expands when FAB hides, Shrinks when FAB appears
+                val animatedDockWidth by transition.animateDp(
+                    transitionSpec = {
+                        if (targetState) {
+                            // Shrink quickly so we don't hit the incoming FAB
+                            tween(500, easing = FastOutSlowInEasing)
+                        } else {
+                            // Expand slightly delayed (wait for FAB to drop)
+                            tween(500, delayMillis = 100, easing = FastOutSlowInEasing)
+                        }
+                    },
+                    label = "DockWidth"
+                ) { visible ->
+                    if (visible) clampedDockWidth else expandedDockWidth
+                }
+
+                // 2. Dock Slide (Moves Left)
+                // Note: The shift amount is based on what we are making room FOR (the FAB),
+                // so the logic remains the same regardless of dock width.
                 val dockSlideX by transition.animateDp(
                     transitionSpec = { tween(500, easing = FastOutSlowInEasing) },
                     label = "DockSlide"
                 ) { visible ->
-                    // Move left by half the total added width to keep the visual center balanced
                     if (visible) -((gapSize + fabSize) / 2) else 0.dp
                 }
 
-                // B. FAB Vertical Drop (Moves Up/Down)
+                // 3. FAB Vertical Drop
                 val fabOffsetY by transition.animateDp(
                     transitionSpec = {
-                        if (targetState) {
-                            // ENTER: Wait 150ms
-                            tween(500, delayMillis = 150, easing = FastOutSlowInEasing)
-                        } else {
-                            // EXIT: Drop immediately
-                            tween(500, easing = FastOutSlowInEasing)
-                        }
+                        if (targetState) tween(500, delayMillis = 150, easing = FastOutSlowInEasing)
+                        else tween(500, easing = FastOutSlowInEasing)
                     },
                     label = "FabOffsetY"
-                ) { visible ->
-                    if (visible) 0.dp else fabSize * 2
-                }
+                ) { visible -> if (visible) 0.dp else fabSize * 2 }
 
-                // C. Alpha (Opacity)
+                // 4. Alpha
                 val fabAlpha by transition.animateFloat(
                     transitionSpec = {
-                        if (targetState) {
-                            tween(300, delayMillis = 200)
-                        } else {
-                            // EXIT: Slow fade (500ms)
-                            tween(500, easing = LinearEasing)
-                        }
+                        if (targetState) tween(300, delayMillis = 200)
+                        else tween(500, easing = LinearEasing)
                     },
                     label = "FabAlpha"
                 ) { visible -> if (visible) 1f else 0f }
@@ -304,7 +329,7 @@ fun TasksScreen(
                 val fabRotation by animateFloatAsState(if (currentScreen == AppScreen.Calendar) 90f else 0f, tween(500))
                 val fabIconSize = fabSize * 0.5f
 
-                // 3. LAYOUT (Box Stack)
+                // 3. LAYOUT
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -316,12 +341,9 @@ fun TasksScreen(
                     // --- DOCK ---
                     Box(
                         modifier = Modifier
-                            .width(dockWidth)
+                            .width(animatedDockWidth) // <--- Use the Animated Width
                             .height(fabSize)
                             .offset(x = dockSlideX),
-                        // FIX: Force content to Center.
-                        // This ignores any small math discrepancies in 'dockWidth'
-                        // and guarantees the visible dock is perfectly symmetrical.
                         contentAlignment = Alignment.Center
                     ) {
                         FloatingNavBar(
@@ -329,14 +351,17 @@ fun TasksScreen(
                             onScreenSelected = { screen ->
                                 scope.launch { pagerState.animateScrollToPage(screen.ordinal) }
                             },
-                            height = fabSize
+                            height = fabSize,
+                            // Pass the animated width so the surface clips/scrolls correctly
+                            modifier = Modifier.width(animatedDockWidth)
                         )
                     }
 
                     // --- FAB ---
                     if (fabAlpha > 0f) {
-                        // Position FAB to the right of the Dock center
-                        val fabFixedOffsetX = (dockWidth / 2) + (gapSize / 2)
+                        // Position based on the CURRENT animated width.
+                        // This keeps the FAB glued to the dock edge even while the dock is shrinking/growing.
+                        val fabFixedOffsetX = (animatedDockWidth / 2) + (gapSize / 2)
 
                         FloatingActionButton(
                             onClick = {
@@ -1051,35 +1076,29 @@ fun TimePickerDialog(
 fun FloatingNavBar(
     currentScreen: AppScreen,
     onScreenSelected: (AppScreen) -> Unit,
-    height: Dp = 72.dp
+    height: Dp = 72.dp,
+    modifier: Modifier = Modifier // <--- NEW PARAMETER
 ) {
-    // 1. Calculate Sizes
     val iconSize = height * 0.45f
-    val cornerRadius = height * 0.35f
-
-    // 2. Padding Logic
     val verticalSpace = (height - iconSize) / 2
-
-    // FIX: Horizontal padding is now DOUBLE the vertical padding
     val sidePadding = verticalSpace * 2
-
     val buttonWidth = iconSize + 24.dp
     val internalButtonSpace = (buttonWidth - iconSize) / 2
-
-    // Ensure we don't get negative padding if buttons are wide
     val rowPadding = (sidePadding - internalButtonSpace).coerceAtLeast(0.dp)
+    val cornerRadius = height * 0.35f
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         shape = RoundedCornerShape(cornerRadius),
-        modifier = Modifier.height(height),
+        // FIX: Apply the passed 'modifier' here, then chain your height
+        modifier = modifier.height(height),
         shadowElevation = 4.dp
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .padding(horizontal = rowPadding)
-                .horizontalScroll(rememberScrollState()),
+                .horizontalScroll(rememberScrollState()), // Scroll logic takes over if width is clamped
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             AppScreen.entries.forEach { screen ->
