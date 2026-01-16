@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
 // CHANGE VERSION FROM 2 -> 3
-@Database(entities = [Task::class, WeeklyEvent::class], version = 4, exportSchema = false)
+@Database(entities = [Task::class, WeeklyEvent::class], version = 5, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class KomoriDatabase : RoomDatabase() {
 

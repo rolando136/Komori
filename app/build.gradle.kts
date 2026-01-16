@@ -55,6 +55,7 @@ dependencies {
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.foundation.layout)
     implementation(libs.androidx.compose.animation)
+    implementation(libs.places)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -87,5 +88,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended:1.7.0") // Check for latest version
 
     implementation("com.adamglin:phosphor-icon-android:1.0.0")
+
+    implementation("com.google.code.gson:gson:2.10.1")
     }
 

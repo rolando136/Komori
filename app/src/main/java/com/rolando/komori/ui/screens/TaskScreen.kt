@@ -64,19 +64,27 @@ import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.DatePickerDefaults.dateFormatter
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.times
 import androidx.compose.ui.zIndex
+import androidx.room.Entity // <
+import androidx.room.PrimaryKey
 
 // --- PHOSPHOR ICONS IMPORTS (BOLD) ---
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Bold
 import com.adamglin.phosphoricons.bold.*
+import com.rolando.komori.data.Subtask
+import com.rolando.komori.data.TaskPriority
 import com.rolando.komori.ui.components.CompactSelector
 import com.rolando.komori.ui.components.KomoriButton
 import com.rolando.komori.ui.components.KomoriDialog
@@ -96,11 +104,21 @@ fun TasksScreen(
     // Task Dialog States
     var newTaskTitle by remember { mutableStateOf("") }
     var newTaskDetails by remember { mutableStateOf("") }
-    var newTaskDate by remember { mutableStateOf<Long?>(null) }
+    // Change these definitions:
+    var newTaskDate by remember { mutableStateOf<LocalDate?>(null) } // Was Long?
+    var newTaskTime by remember { mutableStateOf<LocalTime?>(null) } // Was String?
     var showDatePicker by remember { mutableStateOf(false) }
-    var newTaskTime by remember { mutableStateOf<String?>(null) }
     var showTimePicker by remember { mutableStateOf(false) }
     var selectedTask by remember { mutableStateOf<Task?>(null) }
+
+
+
+    // FIX: Ensure types are clear here
+    var newTaskPriority by remember { mutableStateOf(TaskPriority.MEDIUM) }
+    var newSubtaskText by remember { mutableStateOf("") }
+
+    // FIX: You must import 'mutableStateListOf' and 'Subtask'
+    val newTaskSubtasks = remember { mutableStateListOf<Subtask>() }
 
     val isDark = isSystemInDarkTheme()
     val buttonBgColor = if (isDark) Color(0xFF333333) else MistGreen
@@ -124,13 +142,29 @@ fun TasksScreen(
     var selectedScheduleEvent by remember { mutableStateOf<WeeklyEvent?>(null) }
     var isEditingSchedule by remember { mutableStateOf(false) }
 
-    // --- SAFE LIST HANDLING ---
-    val activeTasks = remember(taskList) {
-        taskList?.filter { !it.isCompleted } ?: emptyList()
+    // --- SAFE LIST HANDLING & SORTING ---
+    val allActiveTasks = remember(taskList) {
+        taskList?.filter { !it.isCompleted }
+            ?.sortedWith(
+                compareBy<Task, LocalDate?>(nullsLast()) { it.date }
+                    .thenBy(nullsLast()) { it.time }
+            ) ?: emptyList()
     }
+
+    // 1. High Priority (Top Section)
+    val highPriorityTasks = remember(allActiveTasks) {
+        allActiveTasks.filter { it.priority == TaskPriority.HIGH }
+    }
+
+    // 2. Standard Tasks (Low/Medium)
+    val standardTasks = remember(allActiveTasks) {
+        allActiveTasks.filter { it.priority != TaskPriority.HIGH }
+    }
+
     val completedTasks = remember(taskList) {
         taskList?.filter { it.isCompleted } ?: emptyList()
     }
+
     var showMonthPicker by remember { mutableStateOf(false) }
     // --- HEADER STATE ---
     // Default to "January 2026" (or current)
@@ -155,6 +189,10 @@ fun TasksScreen(
         animationSpec = tween(durationMillis = 200),
         label = "BlurAnimation"
     )
+
+    // --- ADD THESE TWO LINES HERE ---
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("MMM dd, yyyy") }
+    val timeFormatter = remember { DateTimeFormatter.ofPattern("h:mm a") }
 
     fun formatDate(timestamp: Long?): String {
         if (timestamp == null) return "Pick a Date"
@@ -435,11 +473,11 @@ fun TasksScreen(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(bottom = 100.dp)
                         ) {
-                            if (activeTasks.isEmpty()) {
+                            // EMPTY STATE (No tasks at all)
+                            if (allActiveTasks.isEmpty() && completedTasks.isEmpty()) {
                                 item {
                                     Box(
-                                        modifier = Modifier.fillParentMaxSize()
-                                            .padding(bottom = 100.dp),
+                                        modifier = Modifier.fillParentMaxSize().padding(bottom = 100.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
@@ -451,43 +489,71 @@ fun TasksScreen(
                                     }
                                 }
                             } else {
-                                item { SectionHeader("ACTIVE FOCUS") }
-                                item {
-                                    Surface(
-                                        modifier = Modifier.fillMaxWidth()
-                                            .padding(horizontal = 20.dp),
-                                        shape = RoundedCornerShape(24.dp),
-                                        color = MaterialTheme.colorScheme.surface,
-                                        shadowElevation = 0.dp
-                                    ) {
-                                        Column {
-                                            activeTasks.forEachIndexed { index, task ->
-                                                TaskItem(
-                                                    task = task,
-                                                    onCheckedChange = { isChecked ->
-                                                        viewModel.toggleTask(
-                                                            task,
-                                                            isChecked
-                                                        )
-                                                    },
-                                                    onItemClick = { selectedTask = task },
-                                                    showDivider = index < activeTasks.lastIndex
-                                                )
+                                // --- GLOBAL HEADER (Only if active tasks exist) ---
+                                if (allActiveTasks.isNotEmpty()) {
+                                    item {
+                                        SectionHeader("ACTIVE FOCUS")
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                    }
+                                }
+
+                                // --- SECTION 1: HIGH PRIORITY ---
+                                if (highPriorityTasks.isNotEmpty()) {
+                                    item {
+                                        Surface(
+                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                                            shape = RoundedCornerShape(24.dp),
+                                            color = MaterialTheme.colorScheme.surface,
+                                            border = BorderStroke(1.dp, Color(TaskPriority.HIGH.color).copy(alpha = 0.3f)),
+                                            shadowElevation = 0.dp
+                                        ) {
+                                            Column {
+                                                highPriorityTasks.forEachIndexed { index, task ->
+                                                    TaskItem(
+                                                        task = task,
+                                                        onCheckedChange = { isChecked -> viewModel.toggleTask(task, isChecked) },
+                                                        onItemClick = { selectedTask = task },
+                                                        showDivider = index < highPriorityTasks.lastIndex
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(24.dp))
+                                    }
+                                }
+
+                                // --- SECTION 2: STANDARD TASKS ---
+                                if (standardTasks.isNotEmpty()) {
+                                    item {
+                                        Surface(
+                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                                            shape = RoundedCornerShape(24.dp),
+                                            color = MaterialTheme.colorScheme.surface,
+                                            shadowElevation = 0.dp
+                                        ) {
+                                            Column {
+                                                standardTasks.forEachIndexed { index, task ->
+                                                    TaskItem(
+                                                        task = task,
+                                                        onCheckedChange = { isChecked -> viewModel.toggleTask(task, isChecked) },
+                                                        onItemClick = { selectedTask = task },
+                                                        showDivider = index < standardTasks.lastIndex
+                                                    )
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
 
+                            // --- SECTION 3: COMPLETED ---
                             if (completedTasks.isNotEmpty()) {
                                 item {
                                     Spacer(modifier = Modifier.height(24.dp))
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clickable {
-                                                isCompletedExpanded = !isCompletedExpanded
-                                            }
+                                            .clickable { isCompletedExpanded = !isCompletedExpanded }
                                             .padding(horizontal = 24.dp, vertical = 16.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -507,8 +573,7 @@ fun TasksScreen(
                                 if (isCompletedExpanded) {
                                     item {
                                         Surface(
-                                            modifier = Modifier.fillMaxWidth()
-                                                .padding(horizontal = 20.dp),
+                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                                             shape = RoundedCornerShape(24.dp),
                                             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
                                         ) {
@@ -516,12 +581,7 @@ fun TasksScreen(
                                                 completedTasks.forEachIndexed { index, task ->
                                                     TaskItem(
                                                         task = task,
-                                                        onCheckedChange = { isChecked ->
-                                                            viewModel.toggleTask(
-                                                                task,
-                                                                isChecked
-                                                            )
-                                                        },
+                                                        onCheckedChange = { isChecked -> viewModel.toggleTask(task, isChecked) },
                                                         onItemClick = { selectedTask = task },
                                                         showDivider = index < completedTasks.lastIndex
                                                     )
@@ -555,96 +615,267 @@ fun TasksScreen(
     }
 
     if (selectedTask != null) {
-        TaskDetailDialog(
-            task = selectedTask!!,
-            onDismiss = { selectedTask = null },
-            onDelete = {
-                viewModel.deleteTask(selectedTask!!)
-                selectedTask = null
-            },
-            onSave = { updatedTask ->
-                viewModel.updateTask(updatedTask)
-                selectedTask = null
-            }
-        )
+        // STATE: Track if we are in "View" mode or "Edit" mode
+        // We use a local state that resets whenever selectedTask changes
+        var isEditing by remember(selectedTask) { mutableStateOf(false) }
+
+        if (isEditing) {
+            // 2. EDIT MODE
+            EditTaskDialog(
+                task = selectedTask!!,
+                onDismiss = { isEditing = false }, // Go back to View mode
+                onDelete = {
+                    viewModel.deleteTask(selectedTask!!)
+                    selectedTask = null
+                },
+                onSave = { updatedTask ->
+                    viewModel.updateTask(updatedTask)
+                    selectedTask = null // Close everything
+                }
+            )
+        } else {
+            // 1. VIEW MODE (Updated)
+            TaskDetailDialog(
+                task = selectedTask!!,
+                onDismiss = { selectedTask = null },
+                onEdit = { isEditing = true },
+                onUpdateTask = { updatedTask ->
+                    viewModel.updateTask(updatedTask)
+                    selectedTask = updatedTask
+                }
+            )
+        }
     }
 
-    // --- MAIN ADD TASK DIALOG ---
+    // --- MAIN ADD TASK DIALOG (Redesigned) ---
     if (showDialog) {
         KomoriDialog(
             title = "New Focus",
             onDismiss = { showDialog = false },
-            onDelete = null, // Passing null automatically shows the "X" close button
+            onDelete = null,
             saveButtonText = "Add Focus",
             onSave = {
                 if (newTaskTitle.isNotBlank()) {
-                    viewModel.addTask(newTaskTitle, newTaskDetails, newTaskDate, newTaskTime)
+                    viewModel.addTask(
+                        title = newTaskTitle,
+                        details = newTaskDetails,
+                        date = newTaskDate,
+                        time = newTaskTime,
+                        priority = newTaskPriority,
+                        subtasks = newTaskSubtasks.toList()
+                    )
+                    // Reset State
+                    newTaskTitle = ""; newTaskDetails = ""; newTaskPriority = TaskPriority.MEDIUM
+                    newTaskDate = null; newTaskTime = null; newTaskSubtasks.clear()
                     showDialog = false
                 }
             }
         ) {
             // --- DIALOG CONTENT ---
 
-            // 1. Title Input
+            // 1. VISIBILITY STATES (Hidden by default)
+            var showDetails by remember { mutableStateOf(false) }
+            var showPriority by remember { mutableStateOf(false) }
+            var showDateTime by remember { mutableStateOf(false) }
+            var showSubtasks by remember { mutableStateOf(false) }
+
+            val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+            val optionBgColor = if (isDark) Color(0xFF333333) else MistGreen.copy(alpha = 0.15f)
+            val optionShape = RoundedCornerShape(12.dp)
+
+            // --- A. MAIN INPUT (Always Visible) ---
             CalmInputTextField(
                 value = newTaskTitle,
                 onValueChange = { newTaskTitle = it },
-                label = "What's the core task?",
+                label = "What is the core task?",
                 singleLine = true
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 2. Details Input
-            CalmInputTextField(
-                value = newTaskDetails,
-                onValueChange = { newTaskDetails = it },
-                label = "Any details?",
-                singleLine = false,
-                minLines = 3,
-                maxLines = 5
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 3. Date & Time Selectors (Using CompactSelector)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Date
-                CompactSelector(
-                    label = "Date",
-                    value = if (newTaskDate != null) formatDate(newTaskDate) else "Set Date",
-                    onClick = { showDatePicker = true },
-                    modifier = Modifier.weight(1f)
-                )
+            // --- B. OPTIONAL SECTIONS ---
 
-                // Time
-                CompactSelector(
-                    label = "Time",
-                    value = newTaskTime ?: "Set Time",
-                    onClick = { showTimePicker = true },
-                    modifier = Modifier.weight(1f)
+            // 1. DETAILS
+            if (!showDetails) {
+                AddOptionRow(
+                    icon = PhosphorIcons.Bold.TextAlignLeft,
+                    label = "Add Details",
+                    onClick = { showDetails = true },
+                    backgroundColor = optionBgColor,
+                    shape = optionShape
                 )
+            } else {
+                SectionHeaderWithClose(title = "DETAILS", onClose = { showDetails = false; newTaskDetails = "" })
+                CalmInputTextField(
+                    value = newTaskDetails,
+                    onValueChange = { newTaskDetails = it },
+                    label = "Add notes or context...",
+                    singleLine = false,
+                    minLines = 3,
+                    maxLines = 5
+                )
+                Spacer(modifier = Modifier.height(12.dp))
             }
 
-            // No need to add Buttons here, KomoriDialog adds them automatically at the bottom!
+            // 2. SUBTASKS
+            if (!showSubtasks) {
+                AddOptionRow(
+                    icon = PhosphorIcons.Bold.ListPlus,
+                    label = "Add Subtasks",
+                    onClick = { showSubtasks = true },
+                    backgroundColor = optionBgColor,
+                    shape = optionShape
+                )
+            } else {
+                SectionHeaderWithClose(title = "SUBTASKS", onClose = { showSubtasks = false; newTaskSubtasks.clear() })
+
+                // Input Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CalmInputTextField(
+                        value = newSubtaskText,
+                        onValueChange = { newSubtaskText = it },
+                        label = "Next step...",
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(
+                        onClick = {
+                            if (newSubtaskText.isNotBlank()) {
+                                newTaskSubtasks.add(Subtask(title = newSubtaskText))
+                                newSubtaskText = ""
+                            }
+                        },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(SageGreen.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                    ) {
+                        Icon(PhosphorIcons.Bold.Plus, "Add", tint = SageGreen)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // List
+                newTaskSubtasks.forEachIndexed { index, subtask ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .background(optionBgColor, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                    ) {
+                        Box(modifier = Modifier.size(6.dp).background(SageGreen, CircleShape))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(subtask.title, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Icon(
+                            imageVector = PhosphorIcons.Bold.X,
+                            contentDescription = "Remove",
+                            tint = StoneGray,
+                            modifier = Modifier
+                                .size(16.dp)
+                                .clickable { newTaskSubtasks.removeAt(index) }
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            // 3. PRIORITY
+            if (!showPriority) {
+                AddOptionRow(
+                    icon = PhosphorIcons.Bold.Flag,
+                    label = "Set Priority",
+                    onClick = { showPriority = true },
+                    backgroundColor = optionBgColor,
+                    shape = optionShape
+                )
+            } else {
+                SectionHeaderWithClose(title = "PRIORITY", onClose = { showPriority = false; newTaskPriority = TaskPriority.MEDIUM })
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TaskPriority.entries.forEach { priority ->
+                        val isSelected = newTaskPriority == priority
+                        val priorityColor = Color(priority.color)
+                        val targetColor = if (isSelected) priorityColor else Color.Transparent
+                        val targetBorder = if (isSelected) priorityColor else Color.Gray.copy(alpha = 0.5f)
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(targetColor)
+                                .border(1.dp, targetBorder, RoundedCornerShape(8.dp))
+                                .clickable { newTaskPriority = priority },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = priority.label,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (isSelected) Color.Black else StoneGray,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            // 4. DATE & TIME
+            if (!showDateTime) {
+                AddOptionRow(
+                    icon = PhosphorIcons.Bold.CalendarPlus,
+                    label = "Set Date & Time",
+                    onClick = { showDateTime = true },
+                    backgroundColor = optionBgColor,
+                    shape = optionShape
+                )
+            } else {
+                SectionHeaderWithClose(title = "WHEN", onClose = { showDateTime = false; newTaskDate = null; newTaskTime = null })
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CompactSelector(
+                        label = "Date",
+                        value = newTaskDate?.format(dateFormatter) ?: "Set Date",
+                        onClick = { showDatePicker = true },
+                        modifier = Modifier.weight(1f)
+                    )
+                    CompactSelector(
+                        label = "Time",
+                        value = newTaskTime?.format(timeFormatter) ?: "Set Time",
+                        onClick = { showTimePicker = true },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
         }
     }
 
-    // --- DIALOG PICKERS ---
+    // --- 1. DATE PICKER (Fixed for LocalDate) ---
     if (showDatePicker) {
         val datePickerState = rememberDatePickerState()
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             properties = DialogProperties(usePlatformDefaultWidth = false),
-            colors = DatePickerDefaults.colors(containerColor = dialogSurfaceColor),
+            colors = DatePickerDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh), // safe fallback color
             shape = RoundedCornerShape(28.dp),
             modifier = Modifier.fillMaxWidth(0.88f),
             confirmButton = {
                 TextButton(onClick = {
-                    newTaskDate = datePickerState.selectedDateMillis
+                    // FIX: Convert Milliseconds (Long) -> LocalDate
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        newTaskDate = java.time.Instant.ofEpochMilli(millis)
+                            .atZone(java.time.ZoneId.systemDefault())
+                            .toLocalDate()
+                    }
                     showDatePicker = false
                 }) { Text("OK", color = SageGreen) }
             },
@@ -656,24 +887,24 @@ fun TasksScreen(
                 state = datePickerState,
                 colors = DatePickerDefaults.colors(
                     titleContentColor = StoneGray,
-                    headlineContentColor = dialogTextColor,
+                    headlineContentColor = MaterialTheme.colorScheme.onSurface,
                     weekdayContentColor = StoneGray,
-                    subheadContentColor = dialogTextColor,
-                    yearContentColor = dialogTextColor,
-                    dayContentColor = dialogTextColor,
+                    subheadContentColor = MaterialTheme.colorScheme.onSurface,
+                    yearContentColor = MaterialTheme.colorScheme.onSurface,
+                    dayContentColor = MaterialTheme.colorScheme.onSurface,
                     todayContentColor = SageGreen,
                     todayDateBorderColor = SageGreen,
                     selectedDayContainerColor = SageGreen,
                     selectedDayContentColor = Color.White,
-                    navigationContentColor = dialogTextColor
+                    navigationContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
     }
 
+    // --- 2. TIME PICKER (Fixed for LocalTime) ---
     if (showTimePicker) {
         val timeState = rememberTimePickerState()
-        val isAppInDarkMode = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
         Dialog(
             onDismissRequest = { showTimePicker = false },
@@ -690,6 +921,7 @@ fun TasksScreen(
                 ) {
                     Text("Select time", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                     Spacer(modifier = Modifier.height(24.dp))
+
                     TimePicker(
                         state = timeState,
                         colors = TimePickerDefaults.colors(
@@ -701,25 +933,24 @@ fun TasksScreen(
                             timeSelectorSelectedContentColor = SageGreen
                         )
                     )
+
                     Spacer(modifier = Modifier.height(24.dp))
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End
                     ) {
                         TextButton(onClick = { showTimePicker = false }) { Text("Cancel", color = StoneGray) }
+
                         TextButton(onClick = {
-                            val cal = Calendar.getInstance()
-                            cal.set(Calendar.HOUR_OF_DAY, timeState.hour)
-                            cal.set(Calendar.MINUTE, timeState.minute)
-                            val sdf = SimpleDateFormat("hh:mm a", Locale.getDefault())
-                            newTaskTime = sdf.format(cal.time)
+                            // FIX: Create LocalTime directly (No more Calendar/SimpleDateFormat)
+                            newTaskTime = java.time.LocalTime.of(timeState.hour, timeState.minute)
                             showTimePicker = false
                         }) { Text("OK", color = SageGreen) }
                     }
                 }
             }
         }
-
     }
 
     if (showMonthPicker) {
@@ -809,7 +1040,9 @@ fun CalmInputTextField(
     label: String,
     singleLine: Boolean,
     minLines: Int = 1,
-    maxLines: Int = 1
+    maxLines: Int = 1,
+    // 1. Parameter is correctly defined here:
+    modifier: Modifier = Modifier
 ) {
     val isAppInDarkMode = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val inputBoxColor = if (isAppInDarkMode) Color(0xFF333333) else NatureWhite
@@ -836,7 +1069,10 @@ fun CalmInputTextField(
             unfocusedIndicatorColor = Color.Transparent,
             cursorColor = SageGreen
         ),
-        modifier = Modifier.fillMaxWidth()
+        // 2. FIX: Use the 'modifier' parameter passed to the function!
+        // We chain .fillMaxWidth() to it so it defaults to full width
+        // unless the parent overrides it (like with weight).
+        modifier = modifier.fillMaxWidth()
     )
 }
 
@@ -850,88 +1086,288 @@ fun SectionHeader(text: String) {
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun TaskDetailDialog(
+    task: Task,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onUpdateTask: (Task) -> Unit
+) {
+    // 1. CALCULATE PROGRESS
+    val totalSubtasks = task.subtasks.size
+    val completedSubtasks = task.subtasks.count { it.isCompleted }
+    val progress = if (totalSubtasks > 0) {
+        completedSubtasks.toFloat() / totalSubtasks
+    } else {
+        if (task.isCompleted) 1f else 0f
+    }
+    val percentage = (progress * 100).toInt()
+
+    // 2. COLORS & FORMATTERS
+    val priorityColor = Color(task.priority.color)
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("EEEE, MMM dd") }
+    val timeFormatter = remember { DateTimeFormatter.ofPattern("h:mm a") }
+
+    val containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    val shape = RoundedCornerShape(28.dp)
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .padding(16.dp),
+            shape = shape,
+            color = containerColor,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp)
+            ) {
+
+                // =========================================================
+                // 1. HEADER ROW: Title & Progress
+                // =========================================================
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = task.title,
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = AppFont,
+                            fontSize = 22.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 12.dp),
+                        lineHeight = 28.sp
+                    )
+
+                    Box(contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.size(44.dp),
+                            color = SageGreen,
+                            trackColor = StoneGray.copy(alpha = 0.15f),
+                            strokeWidth = 4.dp,
+                            strokeCap = StrokeCap.Round
+                        )
+                        Text(
+                            text = "$percentage%",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                // =========================================================
+                // 2. SUBTASKS (Directly under Title)
+                // =========================================================
+                if (task.subtasks.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        task.subtasks.forEachIndexed { index, subtask ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        val newSubtasks = task.subtasks.toMutableList()
+                                        newSubtasks[index] = subtask.copy(isCompleted = !subtask.isCompleted)
+                                        onUpdateTask(task.copy(subtasks = newSubtasks))
+                                    }
+                                    .padding(vertical = 6.dp, horizontal = 4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (subtask.isCompleted) PhosphorIcons.Bold.CheckCircle else PhosphorIcons.Bold.Circle,
+                                    contentDescription = null,
+                                    tint = if (subtask.isCompleted) SageGreen else StoneGray.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = subtask.title,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 16.sp),
+                                    color = if (subtask.isCompleted) StoneGray else MaterialTheme.colorScheme.onSurface,
+                                    textDecoration = if (subtask.isCompleted) TextDecoration.LineThrough else null
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // =========================================================
+                // 3. DIVIDER
+                // =========================================================
+                Spacer(modifier = Modifier.height(20.dp))
+                HorizontalDivider(color = StoneGray.copy(alpha = 0.15f))
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // =========================================================
+                // 4. METADATA (Priority, Date, Details)
+                // =========================================================
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+
+                    // A. Priority (First item in metadata)
+                    DetailRow(
+                        icon = PhosphorIcons.Bold.Flag,
+                        label = "Priority",
+                        value = task.priority.label,
+                        iconColor = priorityColor
+                    )
+
+                    // B. Date & Time
+                    if (task.date != null) {
+                        val dateStr = task.date.format(dateFormatter)
+                        val timeStr = task.time?.format(timeFormatter)
+                        val fullDateTime = if (timeStr != null) "$dateStr • $timeStr" else dateStr
+
+                        DetailRow(
+                            icon = PhosphorIcons.Bold.CalendarBlank,
+                            label = "Due Date",
+                            value = fullDateTime,
+                            iconColor = SageGreen
+                        )
+                    }
+
+                    // C. Details
+                    if (task.details.isNotBlank()) {
+                        DetailRow(
+                            icon = PhosphorIcons.Bold.TextAlignLeft,
+                            label = "Description",
+                            value = task.details,
+                            iconColor = SageGreen,
+                            alignTop = true
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // =========================================================
+                // 5. ACTION BUTTONS
+                // =========================================================
+
+                // Save/Close Button
+                KomoriButton(
+                    text = "Save",
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Edit Button
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(SageGreen.copy(alpha = 0.15f))
+                        .border(1.dp, SageGreen, RoundedCornerShape(14.dp))
+                        .clickable { onEdit() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = PhosphorIcons.Bold.PencilSimple,
+                        contentDescription = "Edit",
+                        tint = SageGreen,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// --- HELPER COMPOSABLE (Paste this at the bottom of TasksScreen.kt) ---
+
+
+@RequiresApi(Build.VERSION_CODES.O)
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditTaskDialog(
     task: Task,
     onDismiss: () -> Unit,
     onDelete: () -> Unit,
     onSave: (Task) -> Unit
 ) {
-    // 1. STATE
+    // 1. DATA STATE
     var editedTitle by remember { mutableStateOf(task.title) }
     var editedDetails by remember { mutableStateOf(task.details) }
-    var editedDate by remember { mutableStateOf(task.dueDate) }
-    var editedTime by remember { mutableStateOf(task.dueTime) }
+    var editedDate by remember { mutableStateOf(task.date) }
+    var editedTime by remember { mutableStateOf(task.time) }
     var isCompleted by remember { mutableStateOf(task.isCompleted) }
+    var editedPriority by remember { mutableStateOf(task.priority) }
+    val editedSubtasks = remember { mutableStateListOf<Subtask>().apply { addAll(task.subtasks) } }
+    var newSubtaskText by remember { mutableStateOf("") }
 
-    // 2. COLORS & DEFINITIONS
+    // 2. VISIBILITY STATE
+    var showDetails by remember { mutableStateOf(task.details.isNotBlank()) }
+    var showPriority by remember { mutableStateOf(task.priority != TaskPriority.MEDIUM) }
+    var showDateTime by remember { mutableStateOf(task.date != null || task.time != null) }
+    var showSubtasks by remember { mutableStateOf(task.subtasks.isNotEmpty()) }
+
+    // 3. STYLING
     val isAppInDarkMode = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val containerColor = if (isAppInDarkMode) Color(0xFF333333) else MistGreen.copy(alpha = 0.3f)
     val borderColor = if (isAppInDarkMode) SageGreen.copy(alpha = 0.5f) else MistGreen
+    val optionBgColor = if (isAppInDarkMode) Color(0xFF333333) else MistGreen.copy(alpha = 0.15f)
+    val optionShape = RoundedCornerShape(12.dp)
 
-    val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
-    val dateString = if (editedDate != null) dateFormat.format(Date(editedDate!!)) else "Set Date"
-    val timeString = editedTime ?: "Set Time"
-
-    // Pickers visibility
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("MMM dd, yyyy") }
+    val timeFormatter = remember { DateTimeFormatter.ofPattern("h:mm a") }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
 
-    // 3. MAIN DIALOG WRAPPER
     KomoriDialog(
         title = "Edit Focus",
         onDismiss = onDismiss,
-        onDelete = onDelete, // Shows Trash icon in header
+        onDelete = onDelete,
         saveButtonText = "Save",
         onSave = {
             val updatedTask = task.copy(
                 title = editedTitle,
                 details = editedDetails,
-                dueDate = editedDate,
-                dueTime = editedTime,
-                isCompleted = isCompleted
+                date = editedDate,
+                time = editedTime,
+                isCompleted = isCompleted,
+                priority = editedPriority,
+                subtasks = editedSubtasks.toList()
             )
             onSave(updatedTask)
         }
     ) {
-        // --- DIALOG CONTENT ---
+        // --- CONTENT ---
 
-        // 1. Inputs
-        CalmInputTextField(value = editedTitle, onValueChange = { editedTitle = it }, label = "Task Name", singleLine = true)
+        // 1. TITLE
+        CalmInputTextField(
+            value = editedTitle,
+            onValueChange = { editedTitle = it },
+            label = "Task Name",
+            singleLine = true
+        )
+
         Spacer(modifier = Modifier.height(16.dp))
 
-        CalmInputTextField(value = editedDetails, onValueChange = { editedDetails = it }, label = "Details", singleLine = false, minLines = 3, maxLines = 5)
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // 2. Date & Time
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            CompactSelector(
-                label = "Due Date",
-                value = dateString,
-                onClick = { showDatePicker = true },
-                modifier = Modifier.weight(1f)
-            )
-            CompactSelector(
-                label = "Time",
-                value = timeString,
-                onClick = { showTimePicker = true },
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // 3. Status Toggle
+        // 2. STATUS (Moved to Top)
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
-                text = "Status",
-                style = MaterialTheme.typography.labelSmall,
+                text = "STATUS",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                 color = StoneGray,
-                modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(bottom = 8.dp)
             )
 
             Row(
@@ -943,7 +1379,7 @@ fun TaskDetailDialog(
                     .border(1.dp, borderColor, RoundedCornerShape(14.dp)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // In Progress Segment
+                // In Progress
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -961,7 +1397,7 @@ fun TaskDetailDialog(
                     )
                 }
 
-                // Completed Segment
+                // Completed
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -974,12 +1410,7 @@ fun TaskDetailDialog(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (isCompleted) {
-                            Icon(
-                                imageVector = PhosphorIcons.Bold.Check,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp).padding(end = 4.dp)
-                            )
+                            Icon(PhosphorIcons.Bold.Check, null, tint = Color.White, modifier = Modifier.size(16.dp).padding(end = 4.dp))
                         }
                         Text(
                             text = "Completed",
@@ -990,80 +1421,210 @@ fun TaskDetailDialog(
                 }
             }
         }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // 3. DETAILS SECTION
+        if (!showDetails) {
+            AddOptionRow(
+                icon = PhosphorIcons.Bold.TextAlignLeft,
+                label = "Add Details",
+                onClick = { showDetails = true },
+                backgroundColor = optionBgColor,
+                shape = optionShape
+            )
+        } else {
+            SectionHeaderWithClose(title = "DETAILS", onClose = { showDetails = false; editedDetails = "" })
+            CalmInputTextField(
+                value = editedDetails,
+                onValueChange = { editedDetails = it },
+                label = "Details",
+                singleLine = false,
+                minLines = 3,
+                maxLines = 5
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        // 4. SUBTASKS SECTION (Moved Below Details)
+        if (!showSubtasks) {
+            AddOptionRow(
+                icon = PhosphorIcons.Bold.ListPlus,
+                label = "Add Subtasks",
+                onClick = { showSubtasks = true },
+                backgroundColor = optionBgColor,
+                shape = optionShape
+            )
+        } else {
+            SectionHeaderWithClose(title = "SUBTASKS", onClose = { showSubtasks = false; editedSubtasks.clear() })
+
+            // Input
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                CalmInputTextField(
+                    value = newSubtaskText,
+                    onValueChange = { newSubtaskText = it },
+                    label = "Next step...",
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = {
+                        if (newSubtaskText.isNotBlank()) {
+                            editedSubtasks.add(Subtask(title = newSubtaskText))
+                            newSubtaskText = ""
+                        }
+                    },
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(SageGreen.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                ) {
+                    Icon(PhosphorIcons.Bold.Plus, "Add", tint = SageGreen)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // List
+            editedSubtasks.forEachIndexed { index, subtask ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .background(optionBgColor, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(18.dp)
+                            .border(1.dp, if (subtask.isCompleted) SageGreen else StoneGray, CircleShape)
+                            .background(if (subtask.isCompleted) SageGreen else Color.Transparent, CircleShape)
+                            .clickable {
+                                editedSubtasks[index] = subtask.copy(isCompleted = !subtask.isCompleted)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (subtask.isCompleted) {
+                            Icon(PhosphorIcons.Bold.Check, null, tint = Color.White, modifier = Modifier.size(10.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = subtask.title,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.bodyMedium,
+                        textDecoration = if (subtask.isCompleted) TextDecoration.LineThrough else null,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(
+                        imageVector = PhosphorIcons.Bold.X,
+                        contentDescription = "Remove",
+                        tint = StoneGray,
+                        modifier = Modifier.size(16.dp).clickable { editedSubtasks.removeAt(index) }
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        // 5. PRIORITY SECTION
+        if (!showPriority) {
+            AddOptionRow(
+                icon = PhosphorIcons.Bold.Flag,
+                label = "Set Priority",
+                onClick = { showPriority = true },
+                backgroundColor = optionBgColor,
+                shape = optionShape
+            )
+        } else {
+            SectionHeaderWithClose(title = "PRIORITY", onClose = { showPriority = false; editedPriority = TaskPriority.MEDIUM })
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TaskPriority.entries.forEach { priority ->
+                    val isSelected = editedPriority == priority
+                    val priorityColor = Color(priority.color)
+                    val targetColor = if (isSelected) priorityColor else Color.Transparent
+                    val targetBorder = if (isSelected) priorityColor else Color.Gray.copy(alpha = 0.5f)
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(targetColor)
+                            .border(1.dp, targetBorder, RoundedCornerShape(8.dp))
+                            .clickable { editedPriority = priority },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = priority.label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (isSelected) Color.Black else StoneGray,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        // 6. DATE & TIME SECTION
+        if (!showDateTime) {
+            AddOptionRow(
+                icon = PhosphorIcons.Bold.CalendarPlus,
+                label = "Set Date & Time",
+                onClick = { showDateTime = true },
+                backgroundColor = optionBgColor,
+                shape = optionShape
+            )
+        } else {
+            SectionHeaderWithClose(title = "WHEN", onClose = { showDateTime = false; editedDate = null; editedTime = null })
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CompactSelector(
+                    label = "Due Date",
+                    value = editedDate?.format(dateFormatter) ?: "Set Date",
+                    onClick = { showDatePicker = true },
+                    modifier = Modifier.weight(1f)
+                )
+                CompactSelector(
+                    label = "Time",
+                    value = editedTime?.format(timeFormatter) ?: "Set Time",
+                    onClick = { showTimePicker = true },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
     }
 
-    // --- REUSED DATE/TIME PICKERS (For Edit Dialog) ---
+    // --- DIALOGS ---
     if (showDatePicker) {
-        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = editedDate)
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = editedDate?.atStartOfDay(java.time.ZoneId.systemDefault())?.toInstant()?.toEpochMilli())
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
-            confirmButton = { TextButton(onClick = { editedDate = datePickerState.selectedDateMillis; showDatePicker = false }) { Text("OK", color = SageGreen) } },
+            confirmButton = { TextButton(onClick = { datePickerState.selectedDateMillis?.let { editedDate = java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).toLocalDate() }; showDatePicker = false }) { Text("OK", color = SageGreen) } },
             dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("Cancel", color = StoneGray) } }
         ) { DatePicker(state = datePickerState) }
     }
 
     if (showTimePicker) {
-        val initialCal = Calendar.getInstance()
-        if (editedTime != null) {
-            try {
-                val parsed = SimpleDateFormat("hh:mm a", Locale.getDefault()).parse(editedTime!!)
-                if (parsed != null) initialCal.time = parsed
-            } catch (e: Exception) { e.printStackTrace() }
-        }
-
-        val timeState = rememberTimePickerState(
-            initialHour = initialCal.get(Calendar.HOUR_OF_DAY),
-            initialMinute = initialCal.get(Calendar.MINUTE)
-        )
-
-        TimePickerDialog(
-            onDismiss = { showTimePicker = false },
-            onConfirm = {
-                val cal = Calendar.getInstance()
-                cal.set(Calendar.HOUR_OF_DAY, timeState.hour)
-                cal.set(Calendar.MINUTE, timeState.minute)
-                editedTime = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(cal.time)
-                showTimePicker = false
-            },
-            timeState = timeState
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun TimePickerDialog(
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
-    timeState: TimePickerState
-) {
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(
-            shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.background,
-            modifier = Modifier.fillMaxWidth(0.92f).padding(16.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text("Select time", style = MaterialTheme.typography.labelLarge, color = StoneGray)
-                Spacer(modifier = Modifier.height(24.dp))
-                TimePicker(
-                    state = timeState,
-                    colors = TimePickerDefaults.colors(
-                        clockDialColor = MaterialTheme.colorScheme.surface,
-                        selectorColor = SageGreen,
-                        periodSelectorSelectedContainerColor = SageGreen.copy(alpha = 0.2f),
-                        periodSelectorSelectedContentColor = SageGreen,
-                        timeSelectorSelectedContainerColor = SageGreen.copy(alpha = 0.2f),
-                        timeSelectorSelectedContentColor = SageGreen
-                    )
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onDismiss) { Text("Cancel", color = StoneGray) }
-                    TextButton(onClick = onConfirm) { Text("OK", color = SageGreen) }
+        val timeState = rememberTimePickerState(initialHour = editedTime?.hour ?: LocalTime.now().hour, initialMinute = editedTime?.minute ?: LocalTime.now().minute)
+        Dialog(onDismissRequest = { showTimePicker = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth(0.94f).padding(16.dp)) {
+                Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Select time", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+                    Spacer(modifier = Modifier.height(24.dp))
+                    TimePicker(state = timeState, colors = TimePickerDefaults.colors(clockDialColor = MaterialTheme.colorScheme.surface, selectorColor = SageGreen, periodSelectorSelectedContainerColor = SageGreen.copy(alpha = 0.2f), periodSelectorSelectedContentColor = SageGreen, timeSelectorSelectedContainerColor = SageGreen.copy(alpha = 0.2f), timeSelectorSelectedContentColor = SageGreen))
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = { showTimePicker = false }) { Text("Cancel", color = StoneGray) }
+                        TextButton(onClick = { editedTime = LocalTime.of(timeState.hour, timeState.minute); showTimePicker = false }) { Text("OK", color = SageGreen) }
+                    }
                 }
             }
         }
@@ -1162,4 +1723,54 @@ enum class AppScreen {
     Tasks,
     Habits,
     Notes
+}
+
+@Composable
+fun AddOptionRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    backgroundColor: Color,
+    shape: androidx.compose.ui.graphics.Shape
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+            .clip(shape)
+            .background(backgroundColor)
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = SageGreen, modifier = Modifier.size(20.dp))
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(text = label, style = MaterialTheme.typography.bodyMedium, color = StoneGray)
+        Spacer(modifier = Modifier.weight(1f))
+        Icon(imageVector = PhosphorIcons.Bold.Plus, contentDescription = null, tint = StoneGray.copy(alpha = 0.5f), modifier = Modifier.size(14.dp))
+    }
+}
+
+@Composable
+fun SectionHeaderWithClose(title: String, onClose: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+            color = StoneGray,
+            letterSpacing = 1.sp
+        )
+        Icon(
+            imageVector = PhosphorIcons.Bold.Minus,
+            contentDescription = "Remove",
+            tint = StoneGray.copy(alpha = 0.7f),
+            modifier = Modifier
+                .size(16.dp)
+                .clickable { onClose() }
+        )
+    }
 }

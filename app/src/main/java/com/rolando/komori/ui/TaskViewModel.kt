@@ -9,7 +9,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.rolando.komori.KomoriApplication
+import com.rolando.komori.data.Subtask
 import com.rolando.komori.data.Task
+import com.rolando.komori.data.TaskPriority
 import com.rolando.komori.data.TaskRepository
 import com.rolando.komori.data.WeeklyEvent
 import java.time.DayOfWeek
@@ -19,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.util.UUID
 
 class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
 
@@ -30,9 +33,28 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
             initialValue = null
         )
 
-    fun addTask(title: String, details: String, date: Long?, time: String?) {
-        val newTask = Task(title = title, details = details, dueDate = date, dueTime = time)
-        viewModelScope.launch { repository.insertTask(newTask) }
+    fun addTask(
+        title: String,
+        details: String,
+        date: LocalDate?,
+        time: LocalTime?,
+        priority: TaskPriority,
+        subtasks: List<Subtask>
+    ) {
+        val newTask = Task(
+            id = UUID.randomUUID().toString(),
+            title = title,
+            details = details,
+            date = date,
+            time = time,
+            priority = priority,
+            subtasks = subtasks
+        )
+
+        // FIX: Save to Repository (Database) instead of local list
+        viewModelScope.launch {
+            repository.insertTask(newTask)
+        }
     }
 
     fun toggleTask(task: Task, isChecked: Boolean) {
