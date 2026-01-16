@@ -2,7 +2,10 @@ package com.rolando.komori.ui.screens
 
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateDp
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -54,8 +57,21 @@ import java.time.DayOfWeek
 import java.time.LocalTime
 import kotlin.random.Random
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.times
+import androidx.compose.ui.zIndex
 
 // --- PHOSPHOR ICONS IMPORTS (BOLD) ---
 import com.adamglin.PhosphorIcons
@@ -217,122 +233,138 @@ fun TasksScreen(
                 )
             },
 
-            // --- FLOATING DOCK & FAB ---
             floatingActionButtonPosition = FabPosition.Center,
             floatingActionButton = {
+                val configuration = LocalConfiguration.current
+                val screenWidth = configuration.screenWidthDp
 
-                val dockBias by animateFloatAsState(
-                    targetValue = if (currentScreen == AppScreen.Tasks || currentScreen == AppScreen.Calendar) -1f else 0f,
-                    animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
-                    label = "DockPosition"
-                )
+                // 1. DYNAMIC SIZES
+                val fabSize = when {
+                    screenWidth < 380 -> 56.dp
+                    screenWidth > 550 -> 72.dp
+                    else -> 64.dp
+                }
 
-                // 1. UPDATE: Match the animation style of the Add Button
-                // We use 'it * 2' to slide it further off-screen for a dramatic effect
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = !isDockHidden,
-                    enter = slideInVertically(
-                        initialOffsetY = { it * 2 }, // Starts from lower down
-                        animationSpec = tween(durationMillis = 500) // Smooth 500ms entry
-                    ) + fadeIn(
-                        animationSpec = tween(durationMillis = 500)
-                    ),
-                    exit = slideOutVertically(
-                        targetOffsetY = { it * 2 }, // Exits further down
-                        animationSpec = tween(durationMillis = 700) // Fast 300ms exit
-                    ) + fadeOut(
-                        animationSpec = tween(durationMillis = 700)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
+                // --- PRE-CALCULATE DOCK WIDTH ---
+                val dockHeight = fabSize
+                val iconSize = dockHeight * 0.45f
+                val verticalSpace = (dockHeight - iconSize) / 2
+                val sidePadding = verticalSpace * 2
+                val buttonWidth = iconSize + 24.dp
+                val spacing = 4.dp
+                val itemCount = 4
+                val dockWidth = (buttonWidth * itemCount) + (spacing * (itemCount - 1)) + (sidePadding * 2)
+
+                // 2. ANIMATION STATE
+                val isFabVisible = currentScreen == AppScreen.Tasks || currentScreen == AppScreen.Calendar
+                val transition = updateTransition(targetState = isFabVisible, label = "FabTransition")
+
+                // FIX: Reduced gap from 12.dp to 8.dp
+                val gapSize = 0.dp
+
+                // A. Dock Slide (Moves Left)
+                val dockSlideX by transition.animateDp(
+                    transitionSpec = { tween(500, easing = FastOutSlowInEasing) },
+                    label = "DockSlide"
+                ) { visible ->
+                    // Move left by half the total added width to keep the visual center balanced
+                    if (visible) -((gapSize + fabSize) / 2) else 0.dp
+                }
+
+                // B. FAB Vertical Drop (Moves Up/Down)
+                val fabOffsetY by transition.animateDp(
+                    transitionSpec = {
+                        if (targetState) {
+                            // ENTER: Wait 150ms
+                            tween(500, delayMillis = 150, easing = FastOutSlowInEasing)
+                        } else {
+                            // EXIT: Drop immediately
+                            tween(500, easing = FastOutSlowInEasing)
+                        }
+                    },
+                    label = "FabOffsetY"
+                ) { visible ->
+                    if (visible) 0.dp else fabSize * 2
+                }
+
+                // C. Alpha (Opacity)
+                val fabAlpha by transition.animateFloat(
+                    transitionSpec = {
+                        if (targetState) {
+                            tween(300, delayMillis = 200)
+                        } else {
+                            // EXIT: Slow fade (500ms)
+                            tween(500, easing = LinearEasing)
+                        }
+                    },
+                    label = "FabAlpha"
+                ) { visible -> if (visible) 1f else 0f }
+
+                val dockOffset by animateDpAsState(if (isDockHidden) 150.dp else 0.dp, tween(500))
+                val fabRotation by animateFloatAsState(if (currentScreen == AppScreen.Calendar) 90f else 0f, tween(500))
+                val fabIconSize = fabSize * 0.5f
+
+                // 3. LAYOUT (Box Stack)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                        .offset(y = dockOffset),
+                    contentAlignment = Alignment.BottomCenter
                 ) {
+
+                    // --- DOCK ---
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp),
+                            .width(dockWidth)
+                            .height(fabSize)
+                            .offset(x = dockSlideX),
+                        // FIX: Force content to Center.
+                        // This ignores any small math discrepancies in 'dockWidth'
+                        // and guarantees the visible dock is perfectly symmetrical.
                         contentAlignment = Alignment.Center
                     ) {
+                        FloatingNavBar(
+                            currentScreen = currentScreen,
+                            onScreenSelected = { screen ->
+                                scope.launch { pagerState.animateScrollToPage(screen.ordinal) }
+                            },
+                            height = fabSize
+                        )
+                    }
 
-                        // --- NAVIGATION DOCK ---
-                        Box(
-                            modifier = Modifier.align(
-                                BiasAlignment(
-                                    horizontalBias = dockBias,
-                                    verticalBias = 0f
-                                )
-                            )
-                        ) {
-                            FloatingNavBar(
-                                currentScreen = currentScreen,
-                                onScreenSelected = { screen ->
-                                    scope.launch {
-                                        pagerState.animateScrollToPage(screen.ordinal)
-                                    }
+                    // --- FAB ---
+                    if (fabAlpha > 0f) {
+                        // Position FAB to the right of the Dock center
+                        val fabFixedOffsetX = (dockWidth / 2) + (gapSize / 2)
+
+                        FloatingActionButton(
+                            onClick = {
+                                if (currentScreen == AppScreen.Tasks) {
+                                    newTaskTitle = ""; newTaskDetails = ""; newTaskTime = null; newTaskDate = null
+                                    showDialog = true
+                                } else if (currentScreen == AppScreen.Calendar) {
+                                    showScheduleDialog = true
                                 }
-                            )
-                        }
-
-                        // --- FAB CONTAINER ---
-                        Box(
-                            modifier = Modifier.align(Alignment.CenterEnd)
-                        ) {
-                            // Show FAB for BOTH Tasks and Calendar
-                            val isFabVisible =
-                                currentScreen == AppScreen.Tasks || currentScreen == AppScreen.Calendar
-
-                            // 1. ANIMATION STATE: ROTATION
-                            // If Calendar: 45 degrees. If Tasks: 0 degrees.
-                            val fabRotation by animateFloatAsState(
-                                targetValue = if (currentScreen == AppScreen.Calendar) 90f else 0f,
-                                animationSpec = tween(
-                                    durationMillis = 500,
-                                    easing = FastOutSlowInEasing
-                                ),
-                                label = "FabRotation"
-                            )
-
-                            androidx.compose.animation.AnimatedVisibility(
-                                visible = isFabVisible,
-                                enter = slideInVertically(
-                                    initialOffsetY = { it * 2 },
-                                    animationSpec = tween(durationMillis = 500, delayMillis = 450)
-                                ) + fadeIn(
-                                    animationSpec = tween(durationMillis = 500, delayMillis = 450)
-                                ),
-                                exit = slideOutVertically(
-                                    targetOffsetY = { it * 2 },
-                                    animationSpec = tween(durationMillis = 300)
-                                ) + fadeOut(
-                                    animationSpec = tween(durationMillis = 300)
-                                )
-                            ) {
-                                FloatingActionButton(
-                                    onClick = {
-                                        if (currentScreen == AppScreen.Tasks) {
-                                            newTaskTitle = ""
-                                            newTaskDetails = ""
-                                            newTaskTime = null
-                                            newTaskDate = null
-                                            showDialog = true
-                                        } else if (currentScreen == AppScreen.Calendar) {
-                                            showScheduleDialog = true
-                                        }
-                                    },
-                                    containerColor = SageGreen,
-                                    contentColor = Color.White,
-                                    shape = RoundedCornerShape(16.dp),
-                                    elevation = FloatingActionButtonDefaults.elevation(2.dp, 2.dp),
-                                    modifier = Modifier.size(64.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = PhosphorIcons.Bold.Plus,
-                                        contentDescription = "Add",
-                                        // 2. APPLY ROTATION MODIFIER HERE
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .graphicsLayer(rotationZ = fabRotation) // Rotates the icon
-                                    )
+                            },
+                            containerColor = SageGreen,
+                            contentColor = Color.White,
+                            shape = RoundedCornerShape(18.dp),
+                            elevation = FloatingActionButtonDefaults.elevation(4.dp),
+                            modifier = Modifier
+                                .size(fabSize)
+                                .offset(x = fabFixedOffsetX)
+                                .graphicsLayer {
+                                    translationY = fabOffsetY.toPx()
+                                    rotationZ = fabRotation
+                                    alpha = fabAlpha
                                 }
-                            }
+                        ) {
+                            Icon(
+                                imageVector = PhosphorIcons.Bold.Plus,
+                                contentDescription = "Add",
+                                modifier = Modifier.size(fabIconSize)
+                            )
                         }
                     }
                 }
@@ -352,15 +384,19 @@ fun TasksScreen(
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                             ScheduleScreen(
                                 events = scheduleEvents,
-                                // Pass the jump command
                                 jumpToDate = targetJumpDate,
-                                // Receive updates from swipes
                                 onVisibleDateChanged = { date ->
                                     headerTitle = date.format(monthFormatter)
-                                    // Reset jump target to avoid loops
                                     if (targetJumpDate == date) targetJumpDate = null
                                 },
-                                onEventClick = { event -> selectedScheduleEvent = event }
+                                onEventClick = { event -> selectedScheduleEvent = event },
+
+                                // FIX: Use 'pagerState.currentPage' to get the real-time active page
+                                onBottomReached = { isBottom ->
+                                    if (pagerState.currentPage == AppScreen.Calendar.ordinal) {
+                                        isDockHidden = isBottom
+                                    }
+                                }
                             )
                         } else {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1009,61 +1045,78 @@ fun TimePickerDialog(
     }
 }
 
+// ... imports ...
+
 @Composable
 fun FloatingNavBar(
     currentScreen: AppScreen,
-    onScreenSelected: (AppScreen) -> Unit
+    onScreenSelected: (AppScreen) -> Unit,
+    height: Dp = 72.dp
 ) {
-    val isAppInDarkMode = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val dockColor = if (isAppInDarkMode) Color(0xFF333333) else Color.White
-    val inactiveIconColor = if (isAppInDarkMode) Color.LightGray else StoneGray
+    // 1. Calculate Sizes
+    val iconSize = height * 0.45f
+    val cornerRadius = height * 0.35f
+
+    // 2. Padding Logic
+    val verticalSpace = (height - iconSize) / 2
+
+    // FIX: Horizontal padding is now DOUBLE the vertical padding
+    val sidePadding = verticalSpace * 2
+
+    val buttonWidth = iconSize + 24.dp
+    val internalButtonSpace = (buttonWidth - iconSize) / 2
+
+    // Ensure we don't get negative padding if buttons are wide
+    val rowPadding = (sidePadding - internalButtonSpace).coerceAtLeast(0.dp)
 
     Surface(
-        color = dockColor,
-        shape = RoundedCornerShape(20.dp),
-        shadowElevation = 1.dp,
-        modifier = Modifier.height(64.dp)
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(cornerRadius),
+        modifier = Modifier.height(height),
+        shadowElevation = 4.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier
+                .padding(horizontal = rowPadding)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // 1. Calendar
-            NavBarIcon(
-                // PHOSPHOR BOLD: CalendarBlank
-                icon = PhosphorIcons.Bold.CalendarBlank,
-                isSelected = currentScreen == AppScreen.Calendar,
-                inactiveColor = inactiveIconColor,
-                onClick = { onScreenSelected(AppScreen.Calendar) }
-            )
+            AppScreen.entries.forEach { screen ->
+                val isSelected = currentScreen == screen
 
-            // 2. Tasks
-            NavBarIcon(
-                // PHOSPHOR BOLD: CheckCircle
-                icon = PhosphorIcons.Bold.CheckCircle,
-                isSelected = currentScreen == AppScreen.Tasks,
-                inactiveColor = inactiveIconColor,
-                onClick = { onScreenSelected(AppScreen.Tasks) }
-            )
+                val targetAlpha = if (isSelected) 1f else 0.4f
+                val targetScale = if (isSelected) 1.1f else 1f
+                val targetColor = if (isSelected) SageGreen else MaterialTheme.colorScheme.onSurface
 
-            // 3. Habits
-            NavBarIcon(
-                // PHOSPHOR BOLD: Repeat
-                icon = PhosphorIcons.Bold.Repeat,
-                isSelected = currentScreen == AppScreen.Habits,
-                inactiveColor = inactiveIconColor,
-                onClick = { onScreenSelected(AppScreen.Habits) }
-            )
+                val animatedAlpha by animateFloatAsState(targetValue = targetAlpha, label = "alpha")
+                val animatedScale by animateFloatAsState(targetValue = targetScale, label = "scale")
+                val animatedColor by animateColorAsState(targetValue = targetColor, label = "color")
 
-            // 4. Notes
-            NavBarIcon(
-                // PHOSPHOR BOLD: Notepad
-                icon = PhosphorIcons.Bold.Notepad,
-                isSelected = currentScreen == AppScreen.Notes,
-                inactiveColor = inactiveIconColor,
-                onClick = { onScreenSelected(AppScreen.Notes) }
-            )
+                IconButton(
+                    onClick = { onScreenSelected(screen) },
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(buttonWidth)
+                        .graphicsLayer {
+                            scaleX = animatedScale
+                            scaleY = animatedScale
+                            alpha = animatedAlpha
+                        }
+                ) {
+                    Icon(
+                        imageVector = when (screen) {
+                            AppScreen.Calendar -> PhosphorIcons.Bold.CalendarBlank
+                            AppScreen.Tasks -> PhosphorIcons.Bold.CheckCircle
+                            AppScreen.Habits -> PhosphorIcons.Bold.ArrowsClockwise
+                            AppScreen.Notes -> PhosphorIcons.Bold.Note
+                        },
+                        contentDescription = screen.name,
+                        tint = animatedColor,
+                        modifier = Modifier.size(iconSize)
+                    )
+                }
+            }
         }
     }
 }
