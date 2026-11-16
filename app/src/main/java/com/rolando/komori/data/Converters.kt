@@ -68,4 +68,27 @@ class Converters {
     @RequiresApi(Build.VERSION_CODES.O)
     @TypeConverter
     fun toDayOfWeek(value: String): DayOfWeek = DayOfWeek.valueOf(value)
+
+    // --- Habit & Note Converters ---
+    @TypeConverter
+    fun fromIntSet(set: Set<Int>?): String {
+        return set?.joinToString(",") ?: ""
+    }
+
+    @TypeConverter
+    fun toIntSet(data: String?): Set<Int> {
+        if (data.isNullOrBlank()) return emptySet()
+        return data.split(",").mapNotNull { it.trim().toIntOrNull() }.toSet()
+    }
+
+    @TypeConverter
+    fun fromStringSet(set: Set<String>?): String {
+        return set?.joinToString(",") ?: ""
+    }
+
+    @TypeConverter
+    fun toStringSet(data: String?): Set<String> {
+        if (data.isNullOrBlank()) return emptySet()
+        return data.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+    }
 }

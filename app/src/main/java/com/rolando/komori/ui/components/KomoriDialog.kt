@@ -9,15 +9,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import com.rolando.komori.ui.theme.AppFont
-import com.rolando.komori.ui.theme.SageGreen
 import com.rolando.komori.ui.theme.StoneGray
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Bold
@@ -28,10 +29,11 @@ import com.adamglin.phosphoricons.bold.X
 fun KomoriDialog(
     title: String,
     onDismiss: () -> Unit,
-    onSave: () -> Unit,
-    onDelete: (() -> Unit)? = null, // If null, we assume it's an "Add" dialog
-    saveButtonText: String = "Save",
+    onSave: (() -> Unit)?,
+    onDelete: (() -> Unit)? = null,
+    saveButtonText: String? = "Save",
     saveButtonIcon: ImageVector? = null,
+    titleAlign: TextAlign = TextAlign.Center,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Dialog(
@@ -42,9 +44,12 @@ fun KomoriDialog(
         SideEffect {
             dialogWindowProvider?.window?.setDimAmount(0.3f)
         }
+
         Surface(
             shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            // REVERTED: Now uses the theme's defined surfaceContainerHigh
+            color = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier
                 .fillMaxWidth(0.96f)
                 .padding(16.dp)
@@ -57,81 +62,86 @@ fun KomoriDialog(
             ) {
 
                 // --- 1. HEADER ---
-                Row(
+                Box(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    contentAlignment = if (titleAlign == TextAlign.Start || titleAlign == TextAlign.Left)
+                        Alignment.CenterStart else Alignment.Center
                 ) {
+                    // Title
                     Text(
                         text = title,
                         style = MaterialTheme.typography.headlineSmall.copy(
                             fontFamily = AppFont,
                             fontWeight = FontWeight.Bold
                         ),
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = titleAlign,
+                        modifier = Modifier.fillMaxWidth(0.8f)
                     )
 
-                    // If Edit Mode: Show Trash.
-                    // If Add Mode: Show X (Close).
-                    if (onDelete != null) {
-                        IconButton(onClick = onDelete) {
-                            Icon(
-                                imageVector = PhosphorIcons.Bold.Trash,
-                                contentDescription = "Delete",
-                                tint = MaterialTheme.colorScheme.error,
-                            )
-                        }
-                    } else {
-                        IconButton(onClick = onDismiss) {
-                            Icon(
-                                imageVector = PhosphorIcons.Bold.X,
-                                contentDescription = "Close",
-                                tint = StoneGray,
-
-                            )
+                    // Action Button
+                    Box(modifier = Modifier.align(Alignment.CenterEnd)) {
+                        if (onDelete != null) {
+                            IconButton(onClick = onDelete) {
+                                Icon(
+                                    imageVector = PhosphorIcons.Bold.Trash,
+                                    contentDescription = "Delete",
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        } else {
+                            IconButton(onClick = onDismiss) {
+                                Icon(
+                                    imageVector = PhosphorIcons.Bold.X,
+                                    contentDescription = "Close",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // --- 2. CONTENT SLOT ---
+                // --- 2. CONTENT ---
                 content()
 
-                Spacer(modifier = Modifier.height(32.dp))
+                // --- 3. FOOTER ---
+                if (onSave != null && saveButtonText != null) {
+                    Spacer(modifier = Modifier.height(32.dp))
 
-                // --- 3. FOOTER (DYNAMIC) ---
-                if (onDelete != null) {
-                    // CASE A: EDIT MODE (Has Delete option)
-                    // Show Cancel button + Smaller Save button
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(onClick = onDismiss) {
-                            Text("Cancel", color = StoneGray)
+                    if (onDelete != null) {
+                        // EDIT MODE
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(onClick = onDismiss) {
+                                Text(
+                                    "Cancel",
+                                    color = MaterialTheme.colorScheme.tertiary
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            KomoriButton(
+                                text = saveButtonText,
+                                icon = saveButtonIcon,
+                                onClick = onSave,
+                                modifier = Modifier.width(140.dp)
+                            )
                         }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
+                    } else {
+                        // ADD MODE
                         KomoriButton(
                             text = saveButtonText,
                             icon = saveButtonIcon,
                             onClick = onSave,
-                            modifier = Modifier.width(140.dp)
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
-                } else {
-                    // CASE B: ADD MODE (No Delete option)
-                    // Cancel is handled by the 'X' in header.
-                    // Save button fills the full width.
-                    KomoriButton(
-                        text = saveButtonText,
-                        icon = saveButtonIcon,
-                        onClick = onSave,
-                        modifier = Modifier.fillMaxWidth()
-                    )
                 }
             }
         }

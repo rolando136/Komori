@@ -39,6 +39,8 @@ fun MonthYearPickerDialog(
 ) {
     var selectedYear by remember { mutableStateOf(initialDate.year) }
     var selectedMonth by remember { mutableStateOf(initialDate.month) }
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val tertiaryColor = MaterialTheme.colorScheme.tertiary
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -57,7 +59,7 @@ fun MonthYearPickerDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = { selectedYear-- }) {
-                        Icon(PhosphorIcons.Bold.CaretLeft, null, tint = SageGreen)
+                        Icon(PhosphorIcons.Bold.CaretLeft, null, tint = primaryColor)
                     }
                     Text(
                         text = selectedYear.toString(),
@@ -68,7 +70,7 @@ fun MonthYearPickerDialog(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     IconButton(onClick = { selectedYear++ }) {
-                        Icon(PhosphorIcons.Bold.CaretRight, null, tint = SageGreen)
+                        Icon(PhosphorIcons.Bold.CaretRight, null, tint = primaryColor)
                     }
                 }
 
@@ -87,7 +89,7 @@ fun MonthYearPickerDialog(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(if (isSelected) SageGreen else Color.Transparent)
+                                .background(if (isSelected) primaryColor else Color.Transparent)
                                 .clickable { selectedMonth = month }
                                 .padding(vertical = 12.dp)
                         ) {
@@ -119,7 +121,7 @@ fun MonthYearPickerDialog(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                        Text("Cancel", color = StoneGray)
+                        Text("Cancel", color = tertiaryColor)
                     }
 
 

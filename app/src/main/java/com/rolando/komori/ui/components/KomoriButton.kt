@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -28,7 +29,7 @@ fun KomoriButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    icon: ImageVector? = null, // <--- NEW PARAMETER
+    icon: ImageVector? = null,
     enabled: Boolean = true,
     isLoading: Boolean = false
 ) {
@@ -37,32 +38,43 @@ fun KomoriButton(
         enabled = enabled && !isLoading,
         shape = RoundedCornerShape(18.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = SageGreen,
-            contentColor = Color.White,
-            disabledContainerColor = SageGreen.copy(alpha = 0.5f),
-            disabledContentColor = Color.White.copy(alpha = 0.8f)
+            // FIX: Use Dynamic Theme Colors
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+
+            // Dynamic Disabled Colors based on the active theme
+            disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+            disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
         ),
         elevation = ButtonDefaults.buttonElevation(0.dp, 2.dp),
         modifier = modifier.height(56.dp)
     ) {
-        // Wrap content in a Row to handle Icon + Text
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (icon != null) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
+            if (isLoading) {
+                // Optional: You can add a CircularProgressIndicator here if needed
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    strokeWidth = 2.dp
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-            }
+            } else {
+                if (icon != null) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
 
-            Text(
-                text = text,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontFamily = AppFont,
-                    fontWeight = FontWeight.Bold
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontFamily = AppFont,
+                        fontWeight = FontWeight.Bold
+                    )
                 )
-            )
+            }
         }
     }
 }

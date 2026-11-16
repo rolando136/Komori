@@ -7,11 +7,12 @@ import com.rolando.komori.data.TaskRepository
 class KomoriApplication : Application() {
     val database by lazy { KomoriDatabase.getDatabase(this) }
 
-    // UPDATE THIS LINE: Pass both DAOs
     val repository by lazy {
         TaskRepository(
             database.taskDao(),
-            database.weeklyEventDao()
+            database.weeklyEventDao(),
+            database.habitDao(),
+            database.noteDao()
         )
     }
 }

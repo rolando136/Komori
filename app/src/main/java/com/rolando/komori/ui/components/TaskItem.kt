@@ -6,9 +6,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,16 +19,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Bold
+import com.adamglin.phosphoricons.bold.Check
 import com.rolando.komori.data.Task
 import com.rolando.komori.ui.theme.AppFont
-import com.rolando.komori.ui.theme.SageGreen
-import com.rolando.komori.ui.theme.StoneGray
 import java.time.format.DateTimeFormatter
 
 @RequiresApi(Build.VERSION_CODES.O)
@@ -38,20 +39,20 @@ fun TaskItem(
     onItemClick: () -> Unit,
     showDivider: Boolean = true
 ) {
-    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    // --- DYNAMIC THEME COLORS ---
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val tertiaryColor = MaterialTheme.colorScheme.tertiary
     val titleColor = MaterialTheme.colorScheme.onSurface
-    val greenAccent = SageGreen
-    val circleBorderColor = if (isDark) Color.Gray else Color(0xFFC5C5C5)
+    val outlineColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
 
     // --- PROGRESS LOGIC ---
     val totalSubtasks = task.subtasks.size
     val completedSubtasks = task.subtasks.count { it.isCompleted }
 
-    // Calculate percentage only if subtasks exist
     val progress = if (totalSubtasks > 0) {
         completedSubtasks.toFloat() / totalSubtasks
     } else {
-        0f // Default to 0 if no subtasks (won't be shown anyway)
+        0f
     }
 
     // --- DATE FORMATTING ---
@@ -79,25 +80,30 @@ fun TaskItem(
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 1. Checkbox (Left)
+            // 1. Checkbox (Rounded Square)
+            val checkboxShape = RoundedCornerShape(8.dp) // <-- DEFINED ROUNDED SQUARE
+
             Box(
                 modifier = Modifier
                     .size(28.dp)
-                    .clip(CircleShape)
+                    .clip(checkboxShape)
+                    // Fills the background completely when checked
+                    .background(if (task.isCompleted) primaryColor else Color.Transparent)
                     .border(
                         width = 2.dp,
-                        color = if (task.isCompleted) greenAccent else circleBorderColor,
-                        shape = CircleShape
+                        color = if (task.isCompleted) primaryColor else outlineColor,
+                        shape = checkboxShape
                     )
                     .clickable { onCheckedChange(!task.isCompleted) },
                 contentAlignment = Alignment.Center
             ) {
+                // Adds a clean white checkmark when completed
                 if (task.isCompleted) {
-                    Box(
-                        modifier = Modifier
-                            .size(14.dp)
-                            .clip(CircleShape)
-                            .background(greenAccent)
+                    Icon(
+                        imageVector = PhosphorIcons.Bold.Check,
+                        contentDescription = "Completed",
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
@@ -113,7 +119,7 @@ fun TaskItem(
                         fontWeight = FontWeight.Normal,
                         fontFamily = AppFont
                     ),
-                    color = if (task.isCompleted) StoneGray else titleColor,
+                    color = if (task.isCompleted) tertiaryColor else titleColor,
                     textDecoration = if (task.isCompleted) TextDecoration.LineThrough else null,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -128,12 +134,12 @@ fun TaskItem(
                             fontFamily = AppFont,
                             fontSize = 12.sp
                         ),
-                        color = if (task.isCompleted) StoneGray else greenAccent
+                        color = if (task.isCompleted) tertiaryColor else primaryColor
                     )
                 }
             }
 
-            // 3. Progress Circle (Right) - ONLY SHOW IF SUBTASKS EXIST
+            // 3. Progress Circle (Right)
             if (totalSubtasks > 0) {
                 Spacer(modifier = Modifier.width(16.dp))
 
@@ -141,8 +147,8 @@ fun TaskItem(
                     CircularProgressIndicator(
                         progress = { progress },
                         modifier = Modifier.size(32.dp),
-                        color = if (task.isCompleted) StoneGray.copy(alpha = 0.5f) else greenAccent,
-                        trackColor = StoneGray.copy(alpha = 0.15f),
+                        color = if (task.isCompleted) tertiaryColor.copy(alpha = 0.5f) else primaryColor,
+                        trackColor = tertiaryColor.copy(alpha = 0.15f),
                         strokeWidth = 3.dp,
                         strokeCap = StrokeCap.Round
                     )
@@ -151,7 +157,7 @@ fun TaskItem(
                         Text(
                             text = "${(progress * 100).toInt()}",
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                            color = StoneGray,
+                            color = tertiaryColor,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -163,7 +169,7 @@ fun TaskItem(
             HorizontalDivider(
                 modifier = Modifier.padding(horizontal = 24.dp),
                 thickness = 1.dp,
-                color = if (isDark) Color(0xFF333333) else Color(0xFFF0F0F0)
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
             )
         }
     }

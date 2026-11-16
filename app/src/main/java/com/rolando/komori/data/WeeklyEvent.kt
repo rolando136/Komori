@@ -23,6 +23,10 @@ data class WeeklyEvent(
 
     // NEW: "Once", "Daily", "Weekly", "Monthly", "Yearly"
     val recurrence: String = "Once",
+    val recurrenceEnd: LocalDate? = null,
+    val groupId: Long? = null,
+
+    val excludedDates: String = "",
 
     val startTime: LocalTime,
     val endTime: LocalTime,

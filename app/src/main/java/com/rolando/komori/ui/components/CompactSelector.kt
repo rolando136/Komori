@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -15,6 +16,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Bold
+import com.adamglin.phosphoricons.bold.CalendarBlank
+import com.adamglin.phosphoricons.bold.Clock
 import com.rolando.komori.ui.theme.AppFont
 import com.rolando.komori.ui.theme.MistGreen
 import com.rolando.komori.ui.theme.SageGreen
@@ -27,48 +32,43 @@ fun CompactSelector(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Check if app is in Dark Mode
-    val isAppInDarkMode = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    // FIX: Dynamic Theme Colors
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val tertiaryColor = MaterialTheme.colorScheme.tertiary
+    val surfaceColor = MaterialTheme.colorScheme.surfaceContainerHigh
 
-    // Colors
-    val containerColor = if (isAppInDarkMode) Color(0xFF333333) else MistGreen.copy(alpha = 0.3f)
-    val borderColor = if (isAppInDarkMode) SageGreen.copy(alpha = 0.5f) else MistGreen
-    val textColor = SageGreen
+    val isSet = value != "Set Date" && value != "Set Time"
 
-    Column(modifier = modifier) {
-        // Label
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = StoneGray,
-            modifier = Modifier.padding(start = 4.dp)
-        )
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // Button Surface
-        Surface(
-            color = containerColor,
-            shape = RoundedCornerShape(14.dp),
-            border = BorderStroke(1.dp, borderColor),
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .clickable { onClick() }
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = surfaceColor,
+        // FIX: Border uses primary color if set, otherwise transparent
+        border = BorderStroke(1.dp, if (isSet) primaryColor.copy(alpha = 0.5f) else Color.Transparent),
+        modifier = modifier.height(48.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 12.dp)
         ) {
-            Box(
-                modifier = Modifier.padding(vertical = 14.dp, horizontal = 12.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = value,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = AppFont
-                    ),
-                    color = textColor
-                )
-            }
+            Icon(
+                imageVector = if (label == "Date") PhosphorIcons.Bold.CalendarBlank else PhosphorIcons.Bold.Clock,
+                contentDescription = null,
+                // FIX: Icon tint
+                tint = if (isSet) primaryColor else tertiaryColor,
+                modifier = Modifier.size(18.dp)
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = if (isSet) FontWeight.SemiBold else FontWeight.Normal
+                ),
+                // FIX: Text color
+                color = if (isSet) primaryColor else tertiaryColor
+            )
         }
     }
 }
