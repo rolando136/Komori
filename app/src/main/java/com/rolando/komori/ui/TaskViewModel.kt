@@ -158,10 +158,11 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
         }
     }
 
-    fun addHabit(name: String, iconName: String) {
+    fun addHabit(name: String, iconName: String, targetDaysPerWeek: Int = 7) {
         val newHabit = Habit(
             name = name.trim(),
-            iconName = iconName
+            iconName = iconName,
+            targetDaysPerWeek = targetDaysPerWeek
         )
         viewModelScope.launch {
             repository.insertHabit(newHabit)
@@ -181,10 +182,9 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
-    fun toggleHabitDay(habit: Habit, dayIndex: Int) {
+    fun toggleHabitDate(habit: Habit, date: LocalDate) {
         val today = LocalDate.now()
-        val startOfWeek = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-        val targetDate = startOfWeek.plusDays(dayIndex.toLong()).toString()
+        val targetDate = date.toString()
 
         val newDates = if (habit.completedDates.contains(targetDate)) {
             habit.completedDates - targetDate
@@ -192,22 +192,49 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
             habit.completedDates + targetDate
         }
 
-        val newDays = if (habit.completedDays.contains(dayIndex)) {
-            habit.completedDays - dayIndex
+        val startOfCurrentWeek = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        val endOfCurrentWeek = startOfCurrentWeek.plusDays(6)
+        val newDays = if (!date.isBefore(startOfCurrentWeek) && !date.isAfter(endOfCurrentWeek)) {
+            val dayIndex = date.dayOfWeek.value - 1
+            if (newDates.contains(targetDate)) {
+                habit.completedDays + dayIndex
+            } else {
+                habit.completedDays - dayIndex
+            }
         } else {
-            habit.completedDays + dayIndex
+            habit.completedDays
         }
 
         val newStreak = Habit.calculateStreak(newDates, today)
+        val calculatedBest = Habit.calculateBestStreak(newDates)
+        val newBestStreak = maxOf(habit.bestStreak, calculatedBest, newStreak)
 
         val updated = habit.copy(
             completedDays = newDays,
             completedDates = newDates,
-            streak = newStreak
+            streak = newStreak,
+            bestStreak = newBestStreak
         )
         viewModelScope.launch {
             repository.updateHabit(updated)
         }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun toggleHabitDay(habit: Habit, dayIndex: Int) {
+        val today = LocalDate.now()
+        val startOfWeek = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        val targetDate = startOfWeek.plusDays(dayIndex.toLong())
+        toggleHabitDate(habit, targetDate)
+    }
+
+    // --- BACKUP & RESTORE ---
+    suspend fun exportBackupJson(): String {
+        return repository.exportBackupJson()
+    }
+
+    suspend fun importBackupJson(json: String, clearExisting: Boolean = false): Result<com.rolando.komori.data.ImportSummary> {
+        return repository.importBackupJson(json, clearExisting)
     }
 
     // --- NOTES ---

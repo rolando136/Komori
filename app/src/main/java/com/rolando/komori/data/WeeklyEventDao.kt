@@ -16,8 +16,14 @@ interface WeeklyEventDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertEvent(event: WeeklyEvent)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertEvents(events: List<WeeklyEvent>)
+
     @Delete
     suspend fun deleteEvent(event: WeeklyEvent)
+
+    @Query("DELETE FROM weekly_events")
+    suspend fun clearAllEvents()
     // --- ADD THESE 3 FUNCTIONS ---
 
     @Query("DELETE FROM weekly_events WHERE id = :eventId")

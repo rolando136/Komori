@@ -17,6 +17,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.rolando.komori.data.ThemeManager
 import com.rolando.komori.ui.ThemeViewModel
+import com.rolando.komori.ui.screens.AnalyticsScreen
 import com.rolando.komori.ui.screens.SettingsScreen
 import com.rolando.komori.ui.screens.SplashScreen
 import com.rolando.komori.ui.screens.TasksScreen
@@ -60,6 +61,9 @@ class MainActivity : ComponentActivity() {
                                 themeViewModel.setTheme(newTheme)
                             }
                         )
+                    }
+                    composable("analytics") {
+                        AnalyticsScreen(navController = navController)
                     }
                 }
             }

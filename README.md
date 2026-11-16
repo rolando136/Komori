@@ -39,19 +39,30 @@ Instead of busy dashboards and cluttered tools, Komori unifies your **Schedule**
 - **Interactive Detail Modal**: Inspect, edit, check off subtasks, or delete in a clean floating surface.
 - **Active & Completed Separation**: Clear distinction between active tasks and checked-off accomplishments.
 
-### 🌸 3. Rituals (Daily Habits)
-- **Weekly Habit Board**: Track consistency across Monday through Sunday with minimal rounded checkboxes.
-- **Streak Tracker**: Automatic calculation of current streaks with forgiving day-prior rollover.
-- **Aesthetic Phosphor Icons**: Choose from 16 curated icons (Lotus, Book, Water Drop, Sun, Moon, Coffee, Heart, etc.).
-- **Pre-seeded Habits**: Comes ready with *Morning Meditation*, *Hydration*, and *Daily Reading*.
+### 🌸 3. Rituals (Full Habit Tracker)
+- **Week-by-Week Navigation**: Browse any week past or present with day-by-day dates and quick "Today" reset.
+- **Interactive Monthly Heatmap**: Tap any habit to open a detailed month-view calendar heatmap with day-by-day check-in toggles.
+- **Streaks & Consistency**: Track current streaks, best all-time streaks, total completions, and 30-day consistency rates.
+- **Flexible Weekly Goals**: Set target frequencies (Daily, 5 days, 3 days, or custom) with progress bars.
+- **Aesthetic Phosphor Icons**: Curated icons (Lotus, Book, Water Drop, Sun, Moon, Coffee, Heart, Bicycle, Plant, etc.).
 
-### 📝 4. Notes & Thoughts
+### 📊 4. Reports & Analytics
+- **Header 2-Icon Pill**: Fast, unified access to Reports and Settings in an elegant pill container in the top bar.
+- **Focus & Task Distribution**: Task completion rates and priority breakdown (High, Medium, Low).
+- **Rituals Consistency Dashboard**: Active streaks overview, 30-day habit performance bars, and daily completion metrics.
+- **System Overview**: Glanceable counts across scheduled events, focus tasks, and notes.
+
+### 💾 5. Data Backup & Restore (JSON)
+- **Export Backup**: Save your entire Komori database (Tasks, Schedule Events, Rituals, Notes) as portable JSON to your device or share directly via the system share sheet.
+- **Import & Restore**: Restore backups anytime with options to merge with existing entries or cleanly replace all data.
+
+### 📝 6. Notes & Thoughts
 - **Instant Search**: Real-time filtering across titles and note contents.
 - **Pin to Top**: Keep important reflections or pinned lists readily accessible.
 - **Rich Card View**: Clean typography with timestamps and automatic line clamping.
 - **Full CRUD Support**: Effortlessly add, update, and manage your notes.
 
-### 🎨 5. Calming Aesthetic Themes
+### 🎨 7. Calming Aesthetic Themes
 Komori includes 5 hand-crafted pastel palettes tailored for visual comfort in both **Light** and **Dark** modes:
 
 | Theme | Inspiration | Light Accent | Dark Accent |

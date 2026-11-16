@@ -1,6 +1,7 @@
 package com.rolando.komori.data
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 
 class TaskRepository(
@@ -92,5 +93,47 @@ class TaskRepository(
 
     suspend fun deleteNoteById(id: String) {
         noteDao.deleteNoteById(id)
+    }
+
+    // --- BACKUP & RESTORE ---
+    suspend fun exportBackupJson(): String {
+        val tasks = taskDao.getAllTasks().first()
+        val events = weeklyEventDao.getAllEvents().first()
+        val habits = habitDao.getAllHabits().first()
+        val notes = noteDao.getAllNotes().first()
+
+        val backup = KomoriBackup(
+            tasks = tasks,
+            weeklyEvents = events,
+            habits = habits,
+            notes = notes
+        )
+        return BackupManager.toJson(backup)
+    }
+
+    suspend fun importBackupJson(json: String, clearExisting: Boolean): Result<ImportSummary> {
+        val backup = BackupManager.fromJson(json)
+            ?: return Result.failure(IllegalArgumentException("Invalid Komori backup file format."))
+
+        if (clearExisting) {
+            taskDao.clearAllTasks()
+            weeklyEventDao.clearAllEvents()
+            habitDao.clearAllHabits()
+            noteDao.clearAllNotes()
+        }
+
+        if (backup.tasks.isNotEmpty()) taskDao.insertTasks(backup.tasks)
+        if (backup.weeklyEvents.isNotEmpty()) weeklyEventDao.insertEvents(backup.weeklyEvents)
+        if (backup.habits.isNotEmpty()) habitDao.insertHabits(backup.habits)
+        if (backup.notes.isNotEmpty()) noteDao.insertNotes(backup.notes)
+
+        return Result.success(
+            ImportSummary(
+                tasksCount = backup.tasks.size,
+                eventsCount = backup.weeklyEvents.size,
+                habitsCount = backup.habits.size,
+                notesCount = backup.notes.size
+            )
+        )
     }
 }

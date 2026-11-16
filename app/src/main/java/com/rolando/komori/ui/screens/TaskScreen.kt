@@ -48,6 +48,7 @@ import com.adamglin.phosphoricons.bold.Check
 import com.adamglin.phosphoricons.bold.CheckCircle
 import com.adamglin.phosphoricons.bold.Circle
 import com.adamglin.phosphoricons.bold.Flag
+import com.adamglin.phosphoricons.bold.ChartPieSlice
 import com.adamglin.phosphoricons.bold.Gear
 import com.adamglin.phosphoricons.bold.ListPlus
 import com.adamglin.phosphoricons.bold.Minus
@@ -210,8 +211,48 @@ fun TasksScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { navController.navigate("settings") }) {
-                            Icon(imageVector = PhosphorIcons.Bold.Gear, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onBackground)
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                            ),
+                            modifier = Modifier.padding(end = 12.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                            ) {
+                                IconButton(
+                                    onClick = { navController.navigate("analytics") },
+                                    modifier = Modifier.size(34.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = PhosphorIcons.Bold.ChartPieSlice,
+                                        contentDescription = "Reports & Analytics",
+                                        tint = MaterialTheme.colorScheme.onBackground,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .width(1.dp)
+                                        .height(16.dp)
+                                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                                )
+                                IconButton(
+                                    onClick = { navController.navigate("settings") },
+                                    modifier = Modifier.size(34.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = PhosphorIcons.Bold.Gear,
+                                        contentDescription = "Settings",
+                                        tint = MaterialTheme.colorScheme.onBackground,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MaterialTheme.colorScheme.background, scrolledContainerColor = MaterialTheme.colorScheme.background)
@@ -372,8 +413,8 @@ fun TasksScreen(
                     AppScreen.Habits -> {
                         HabitsScreen(
                             habits = habits,
-                            onDayToggle = { habit, dayIndex ->
-                                viewModel.toggleHabitDay(habit, dayIndex)
+                            onDateToggle = { habit, date ->
+                                viewModel.toggleHabitDate(habit, date)
                             },
                             onHabitClick = { habit ->
                                 selectedHabit = habit
@@ -550,26 +591,46 @@ fun TasksScreen(
     if (showHabitDialog) {
         AddHabitDialog(
             onDismiss = { showHabitDialog = false },
-            onSave = { name, iconName ->
-                viewModel.addHabit(name, iconName)
+            onSave = { name, iconName, targetDays ->
+                viewModel.addHabit(name, iconName, targetDays)
                 showHabitDialog = false
             }
         )
     }
 
     if (selectedHabit != null) {
-        EditHabitDialog(
-            habit = selectedHabit!!,
-            onDismiss = { selectedHabit = null },
-            onSave = { updatedHabit ->
-                viewModel.updateHabit(updatedHabit)
-                selectedHabit = null
-            },
-            onDelete = {
-                viewModel.deleteHabit(selectedHabit!!)
-                selectedHabit = null
-            }
-        )
+        var isEditingHabit by remember(selectedHabit) { mutableStateOf(false) }
+        val currentHabit = habits.firstOrNull { it.id == selectedHabit!!.id } ?: selectedHabit!!
+
+        if (isEditingHabit) {
+            EditHabitDialog(
+                habit = currentHabit,
+                onDismiss = { isEditingHabit = false },
+                onSave = { updatedHabit ->
+                    viewModel.updateHabit(updatedHabit)
+                    selectedHabit = null
+                    isEditingHabit = false
+                },
+                onDelete = {
+                    viewModel.deleteHabit(currentHabit)
+                    selectedHabit = null
+                    isEditingHabit = false
+                }
+            )
+        } else {
+            HabitDetailDialog(
+                habit = currentHabit,
+                onDismiss = { selectedHabit = null },
+                onEdit = { isEditingHabit = true },
+                onDateToggle = { date ->
+                    viewModel.toggleHabitDate(currentHabit, date)
+                },
+                onDelete = {
+                    viewModel.deleteHabit(currentHabit)
+                    selectedHabit = null
+                }
+            )
+        }
     }
 
     if (showNoteDialog) {
