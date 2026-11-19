@@ -26,8 +26,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Bold
+import com.adamglin.phosphoricons.bold.ArrowsClockwise
 import com.adamglin.phosphoricons.bold.Check
 import com.rolando.komori.data.Task
+import com.rolando.komori.data.TaskRepeat
 import com.rolando.komori.ui.theme.AppFont
 import java.time.format.DateTimeFormatter
 
@@ -37,6 +39,7 @@ fun TaskItem(
     task: Task,
     onCheckedChange: (Boolean) -> Unit,
     onItemClick: () -> Unit,
+    onBlockedClick: (() -> Unit)? = null,
     showDivider: Boolean = true
 ) {
     // --- DYNAMIC THEME COLORS ---
@@ -81,7 +84,8 @@ fun TaskItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 1. Checkbox (Rounded Square)
-            val checkboxShape = RoundedCornerShape(8.dp) // <-- DEFINED ROUNDED SQUARE
+            val checkboxShape = RoundedCornerShape(8.dp)
+            val hasIncompleteSubtasks = task.subtasks.isNotEmpty() && !task.subtasks.all { it.isCompleted }
 
             Box(
                 modifier = Modifier
@@ -94,7 +98,13 @@ fun TaskItem(
                         color = if (task.isCompleted) primaryColor else outlineColor,
                         shape = checkboxShape
                     )
-                    .clickable { onCheckedChange(!task.isCompleted) },
+                    .clickable {
+                        if (!task.isCompleted && hasIncompleteSubtasks) {
+                            onBlockedClick?.invoke() ?: onItemClick()
+                        } else {
+                            onCheckedChange(!task.isCompleted)
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 // Adds a clean white checkmark when completed
@@ -125,17 +135,50 @@ fun TaskItem(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                if (dateTimeString.isNotEmpty()) {
+                if (dateTimeString.isNotEmpty() || task.repeat != TaskRepeat.NONE) {
                     Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = dateTimeString,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Medium,
-                            fontFamily = AppFont,
-                            fontSize = 12.sp
-                        ),
-                        color = if (task.isCompleted) tertiaryColor else primaryColor
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (task.repeat != TaskRepeat.NONE) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(primaryColor.copy(alpha = 0.12f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Icon(
+                                    imageVector = PhosphorIcons.Bold.ArrowsClockwise,
+                                    contentDescription = task.repeat.label,
+                                    tint = primaryColor,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = task.repeat.label,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 11.sp,
+                                        fontFamily = AppFont,
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    color = primaryColor
+                                )
+                            }
+                            if (dateTimeString.isNotEmpty()) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                        }
+                        if (dateTimeString.isNotEmpty()) {
+                            Text(
+                                text = dateTimeString,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Medium,
+                                    fontFamily = AppFont,
+                                    fontSize = 12.sp
+                                ),
+                                color = if (task.isCompleted) tertiaryColor else primaryColor
+                            )
+                        }
+                    }
                 }
             }
 

@@ -7,6 +7,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -56,15 +58,20 @@ import com.adamglin.phosphoricons.bold.Note
 import com.adamglin.phosphoricons.bold.PencilSimple
 import com.adamglin.phosphoricons.bold.Plus
 import com.adamglin.phosphoricons.bold.TextAlignLeft
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import com.rolando.komori.data.Habit
 import com.rolando.komori.data.Note
+import com.rolando.komori.data.Subroutine
 import com.rolando.komori.data.Subtask
 import com.rolando.komori.data.Task
 import com.rolando.komori.data.TaskPriority
+import com.rolando.komori.data.TaskRepeat
 import com.rolando.komori.data.WeeklyEvent
 import com.rolando.komori.ui.TaskViewModel
 import com.rolando.komori.ui.components.*
 import com.rolando.komori.ui.theme.AppFont
+import com.rolando.komori.ui.theme.paperGrain
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
@@ -86,6 +93,7 @@ fun TasksScreen(
     navController: NavController,
     viewModel: TaskViewModel = viewModel(factory = TaskViewModel.Factory)
 ) {
+    val context = LocalContext.current
     val taskList by viewModel.allTasks.collectAsState()
     var showDialog by remember { mutableStateOf(false) }
     var isCompletedExpanded by remember { mutableStateOf(false) }
@@ -95,6 +103,7 @@ fun TasksScreen(
     var newTaskDetails by remember { mutableStateOf("") }
     var newTaskDate by remember { mutableStateOf<LocalDate?>(null) }
     var newTaskTime by remember { mutableStateOf<LocalTime?>(null) }
+    var newTaskRepeat by remember { mutableStateOf(TaskRepeat.NONE) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var selectedTask by remember { mutableStateOf<Task?>(null) }
@@ -132,8 +141,9 @@ fun TasksScreen(
     var selectedNote by remember { mutableStateOf<Note?>(null) }
 
     // --- SAFE LIST HANDLING & SORTING ---
-    val allActiveTasks = remember(taskList) {
-        taskList?.filter { !it.isCompleted }
+    val today = remember { LocalDate.now() }
+    val allActiveTasks = remember(taskList, today) {
+        taskList?.filter { !it.isCompleted && it.isDueOn(today) }
             ?.sortedWith(
                 compareBy<Task, LocalDate?>(nullsLast()) { it.date }
                     .thenBy(nullsLast()) { it.time }
@@ -142,7 +152,13 @@ fun TasksScreen(
 
     val highPriorityTasks = remember(allActiveTasks) { allActiveTasks.filter { it.priority == TaskPriority.HIGH } }
     val standardTasks = remember(allActiveTasks) { allActiveTasks.filter { it.priority != TaskPriority.HIGH } }
-    val completedTasks = remember(taskList) { taskList?.filter { it.isCompleted } ?: emptyList() }
+    val completedTasks = remember(taskList, today) {
+        taskList?.filter { task ->
+            if (!task.isCompleted) false
+            else if (task.repeat == TaskRepeat.NONE) true
+            else task.lastCompletedDate == today.toString()
+        } ?: emptyList()
+    }
 
     var showMonthPicker by remember { mutableStateOf(false) }
     val monthFormatter = remember { DateTimeFormatter.ofPattern("MMMM yyyy") }
@@ -264,8 +280,19 @@ fun TasksScreen(
                     AppScreen.Calendar -> {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             ScheduleScreen(
-                                events = weeklyEvents, jumpToDate = jumpToDate, onVisibleDateChanged = { date -> currentMonth = date },
-                                onBottomReached = {}, onEventClick = { event -> selectedScheduleEvent = event },
+                                events = weeklyEvents,
+                                tasks = taskList ?: emptyList(),
+                                jumpToDate = jumpToDate,
+                                onVisibleDateChanged = { date -> currentMonth = date },
+                                onBottomReached = {},
+                                onEventClick = { event -> selectedScheduleEvent = event },
+                                onTaskClick = { task -> selectedTask = task },
+                                onTaskToggleComplete = { task ->
+                                    val success = viewModel.toggleTask(task, !task.isCompleted)
+                                    if (!success) {
+                                        Toast.makeText(context, "Complete all subtasks first", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
                                 onAddEvent = { newEvent -> viewModel.insertWeeklyEvent(newEvent) },
                                 onFabVisibilityChange = { /* Not needed for fixed navbar */ }
                             )
@@ -299,8 +326,8 @@ fun TasksScreen(
                                         Surface(
                                             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                                             shape = RoundedCornerShape(24.dp),
-                                            color = MaterialTheme.colorScheme.surface,
-                                            border = BorderStroke(1.dp, Color(TaskPriority.LOW.color).copy(alpha = 0.3f)),
+                                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
                                             shadowElevation = 0.dp
                                         ) {
                                             Column {
@@ -311,7 +338,12 @@ fun TasksScreen(
                                                 highPriorityTasks.forEachIndexed { index, task ->
                                                     TaskItem(
                                                         task = task,
-                                                        onCheckedChange = { isChecked -> viewModel.toggleTask(task, isChecked) },
+                                                        onCheckedChange = { isChecked ->
+                                                            val success = viewModel.toggleTask(task, isChecked)
+                                                            if (!success) {
+                                                                Toast.makeText(context, "Complete all subtasks first", Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        },
                                                         onItemClick = { selectedTask = task },
                                                         showDivider = index < highPriorityTasks.lastIndex
                                                     )
@@ -328,7 +360,8 @@ fun TasksScreen(
                                         Surface(
                                             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                                             shape = RoundedCornerShape(24.dp),
-                                            color = MaterialTheme.colorScheme.surface,
+                                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
                                             shadowElevation = 0.dp
                                         ) {
                                             Column {
@@ -341,7 +374,12 @@ fun TasksScreen(
                                                 standardTasks.forEachIndexed { index, task ->
                                                     TaskItem(
                                                         task = task,
-                                                        onCheckedChange = { isChecked -> viewModel.toggleTask(task, isChecked) },
+                                                        onCheckedChange = { isChecked ->
+                                                            val success = viewModel.toggleTask(task, isChecked)
+                                                            if (!success) {
+                                                                Toast.makeText(context, "Complete all subtasks first", Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        },
                                                         onItemClick = { selectedTask = task },
                                                         showDivider = index < standardTasks.lastIndex
                                                     )
@@ -360,7 +398,8 @@ fun TasksScreen(
                                     Surface(
                                         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                                         shape = RoundedCornerShape(24.dp),
-                                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                                        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
                                     ) {
                                         Column {
                                             Row(
@@ -398,7 +437,9 @@ fun TasksScreen(
                                                 completedTasks.forEachIndexed { index, task ->
                                                     TaskItem(
                                                         task = task,
-                                                        onCheckedChange = { isChecked -> viewModel.toggleTask(task, isChecked) },
+                                                        onCheckedChange = { isChecked ->
+                                                            viewModel.toggleTask(task, isChecked)
+                                                        },
                                                         onItemClick = { selectedTask = task },
                                                         showDivider = index < completedTasks.lastIndex
                                                     )
@@ -414,7 +455,13 @@ fun TasksScreen(
                         HabitsScreen(
                             habits = habits,
                             onDateToggle = { habit, date ->
-                                viewModel.toggleHabitDate(habit, date)
+                                val success = viewModel.toggleHabitDate(habit, date)
+                                if (!success) {
+                                    Toast.makeText(context, "Complete all subroutines first", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            onToggleSubroutine = { habit, subId ->
+                                viewModel.toggleSubroutine(habit, subId)
                             },
                             onHabitClick = { habit ->
                                 selectedHabit = habit
@@ -486,13 +533,13 @@ fun TasksScreen(
         KomoriDialog(
             title = "New Focus",
             titleAlign = TextAlign.Center,
-            onDismiss = { showDialog = false; newTaskTitle = ""; newTaskDetails = ""; newTaskDate = null; newTaskTime = null; newTaskPriority = TaskPriority.MEDIUM; newTaskSubtasks.clear() },
+            onDismiss = { showDialog = false; newTaskTitle = ""; newTaskDetails = ""; newTaskDate = null; newTaskTime = null; newTaskRepeat = TaskRepeat.NONE; newTaskPriority = TaskPriority.MEDIUM; newTaskSubtasks.clear() },
             onDelete = null,
             saveButtonText = "Save Focus",
             onSave = {
                 if (newTaskTitle.isNotBlank()) {
-                    val taskToSave = Task(title = newTaskTitle, priority = newTaskPriority, date = newTaskDate, time = newTaskTime, details = newTaskDetails, subtasks = newTaskSubtasks.toList(), isCompleted = false)
-                    viewModel.addTask(taskToSave); showDialog = false; newTaskTitle = ""; newTaskDetails = ""; newTaskDate = null; newTaskTime = null; newTaskPriority = TaskPriority.MEDIUM; newTaskSubtasks.clear()
+                    val taskToSave = Task(title = newTaskTitle, priority = newTaskPriority, date = newTaskDate, time = newTaskTime, details = newTaskDetails, subtasks = newTaskSubtasks.toList(), repeat = newTaskRepeat, isCompleted = false)
+                    viewModel.addTask(taskToSave); showDialog = false; newTaskTitle = ""; newTaskDetails = ""; newTaskDate = null; newTaskTime = null; newTaskRepeat = TaskRepeat.NONE; newTaskPriority = TaskPriority.MEDIUM; newTaskSubtasks.clear()
                 }
             }
         ) {
@@ -530,10 +577,47 @@ fun TasksScreen(
                     OutlinedTextField(value = newTaskDetails, onValueChange = { newTaskDetails = it }, placeholder = { Text("Add notes...", color = tertiaryColor) }, modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryColor.copy(alpha = 0.5f), unfocusedBorderColor = Color.Transparent, focusedContainerColor = itemBgColor, unfocusedContainerColor = itemBgColor, cursorColor = primaryColor), shape = RoundedCornerShape(12.dp), minLines = 3)
                 }
                 if (!showDateTime) GreenAddOption("Add Date & Time", PhosphorIcons.Bold.CalendarPlus) { showDateTime = true } else ExpandedOption {
-                    SectionHeaderWithClose("WHEN", onClose = { showDateTime = false })
+                    SectionHeaderWithClose("WHEN", onClose = { showDateTime = false; newTaskDate = null; newTaskTime = null; newTaskRepeat = TaskRepeat.NONE })
                     Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         CompactSelector(label = "Date", value = newTaskDate?.format(dateFormatter) ?: "Set Date", onClick = { showDatePicker = true }, modifier = Modifier.weight(1f))
                         CompactSelector(label = "Time", value = newTaskTime?.format(timeFormatter) ?: "Set Time", onClick = { showTimePicker = true }, modifier = Modifier.weight(1f))
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "REPEAT",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp, fontFamily = AppFont),
+                        color = tertiaryColor.copy(alpha = 0.8f)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(TaskRepeat.entries) { repeatOpt ->
+                            val isSelected = newTaskRepeat == repeatOpt
+                            Surface(
+                                modifier = Modifier
+                                    .clickable { newTaskRepeat = repeatOpt },
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) primaryColor else itemBgColor,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isSelected) primaryColor else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                )
+                            ) {
+                                Text(
+                                    text = repeatOpt.label,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        fontFamily = AppFont,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
                     }
                 }
                 if (!showPriority) GreenAddOption("Set Priority", PhosphorIcons.Bold.Flag) { showPriority = true } else ExpandedOption {
@@ -591,8 +675,8 @@ fun TasksScreen(
     if (showHabitDialog) {
         AddHabitDialog(
             onDismiss = { showHabitDialog = false },
-            onSave = { name, iconName, targetDays ->
-                viewModel.addHabit(name, iconName, targetDays)
+            onSave = { name, iconName, targetDays, subroutines ->
+                viewModel.addHabit(name, iconName, targetDays, subroutines)
                 showHabitDialog = false
             }
         )
@@ -623,7 +707,13 @@ fun TasksScreen(
                 onDismiss = { selectedHabit = null },
                 onEdit = { isEditingHabit = true },
                 onDateToggle = { date ->
-                    viewModel.toggleHabitDate(currentHabit, date)
+                    val success = viewModel.toggleHabitDate(currentHabit, date)
+                    if (!success) {
+                        Toast.makeText(context, "Complete all subroutines first", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onToggleSubroutine = { subId ->
+                    viewModel.toggleSubroutine(currentHabit, subId)
                 },
                 onDelete = {
                     viewModel.deleteHabit(currentHabit)
@@ -692,20 +782,37 @@ fun TaskDetailDialog(
     val timeFormatter = remember { DateTimeFormatter.ofPattern("h:mm a") }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(modifier = Modifier.fillMaxWidth(0.92f).padding(16.dp), shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, tonalElevation = 6.dp) {
+        Surface(modifier = Modifier.fillMaxWidth(0.92f).padding(16.dp).paperGrain(), shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, tonalElevation = 6.dp) {
             Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text(text = task.title, style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, fontFamily = AppFont, fontSize = 22.sp), color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f).padding(end = 12.dp), lineHeight = 28.sp)
-                    Box(contentAlignment = Alignment.Center) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = if (task.subtasks.isEmpty()) Modifier.clip(CircleShape).clickable {
+                            val newDone = !task.isCompleted
+                            val todayStr = LocalDate.now().toString()
+                            onUpdateTask(task.copy(isCompleted = newDone, lastCompletedDate = if (newDone && task.repeat != TaskRepeat.NONE) todayStr else null))
+                        } else Modifier
+                    ) {
                         CircularProgressIndicator(progress = { progress }, modifier = Modifier.size(44.dp), color = primaryColor, trackColor = tertiaryColor.copy(alpha = 0.15f), strokeWidth = 4.dp, strokeCap = StrokeCap.Round)
-                        Text(text = "$percentage%", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+                        if (task.isCompleted && task.subtasks.isEmpty()) {
+                            Icon(imageVector = PhosphorIcons.Bold.Check, contentDescription = "Completed", tint = primaryColor, modifier = Modifier.size(20.dp))
+                        } else {
+                            Text(text = "$percentage%", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
                 if (task.subtasks.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         task.subtasks.forEachIndexed { index, subtask ->
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { val newSubtasks = task.subtasks.toMutableList(); newSubtasks[index] = subtask.copy(isCompleted = !subtask.isCompleted); onUpdateTask(task.copy(subtasks = newSubtasks)) }.padding(vertical = 6.dp, horizontal = 4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable {
+                                val newSubtasks = task.subtasks.toMutableList()
+                                newSubtasks[index] = subtask.copy(isCompleted = !subtask.isCompleted)
+                                val allCompleted = newSubtasks.all { it.isCompleted }
+                                val todayStr = LocalDate.now().toString()
+                                onUpdateTask(task.copy(subtasks = newSubtasks, isCompleted = allCompleted, lastCompletedDate = if (allCompleted && task.repeat != TaskRepeat.NONE) todayStr else null))
+                            }.padding(vertical = 6.dp, horizontal = 4.dp)) {
                                 Icon(imageVector = if (subtask.isCompleted) PhosphorIcons.Bold.CheckCircle else PhosphorIcons.Bold.Circle, contentDescription = null, tint = if (subtask.isCompleted) primaryColor else tertiaryColor.copy(alpha = 0.5f), modifier = Modifier.size(22.dp))
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(text = subtask.title, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 16.sp), color = if (subtask.isCompleted) tertiaryColor else MaterialTheme.colorScheme.onSurface, textDecoration = if (subtask.isCompleted) TextDecoration.LineThrough else null)
@@ -717,6 +824,7 @@ fun TaskDetailDialog(
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     DetailRow(icon = PhosphorIcons.Bold.Flag, label = "Priority", value = task.priority.label, iconColor = priorityColor)
                     if (task.date != null) DetailRow(icon = PhosphorIcons.Bold.CalendarBlank, label = "Due Date", value = if (task.time != null) "${task.date.format(dateFormatter)} • ${task.time.format(timeFormatter)}" else task.date.format(dateFormatter), iconColor = primaryColor)
+                    if (task.repeat != TaskRepeat.NONE) DetailRow(icon = PhosphorIcons.Bold.ArrowsClockwise, label = "Repeat", value = task.repeat.label, iconColor = primaryColor)
                     if (task.details.isNotBlank()) DetailRow(icon = PhosphorIcons.Bold.TextAlignLeft, label = "Description", value = task.details, iconColor = primaryColor, alignTop = true)
                 }
                 Spacer(modifier = Modifier.height(32.dp))
@@ -744,12 +852,13 @@ fun EditTaskDialog(
     var editedDate by remember { mutableStateOf(task.date) }
     var editedTime by remember { mutableStateOf(task.time) }
     var editedPriority by remember { mutableStateOf(task.priority) }
+    var editedRepeat by remember { mutableStateOf(task.repeat) }
     var isCompleted by remember { mutableStateOf(task.isCompleted) }
     val editedSubtasks = remember { mutableStateListOf(*task.subtasks.toTypedArray()) }
 
     var showDetails by remember { mutableStateOf(task.details.isNotBlank()) }
     var showPriority by remember { mutableStateOf(task.priority != TaskPriority.MEDIUM) }
-    var showDateTime by remember { mutableStateOf(task.date != null || task.time != null) }
+    var showDateTime by remember { mutableStateOf(task.date != null || task.time != null || task.repeat != TaskRepeat.NONE) }
     var showSubtasks by remember { mutableStateOf(editedSubtasks.isNotEmpty()) }
 
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -763,7 +872,8 @@ fun EditTaskDialog(
     var showTimePicker by remember { mutableStateOf(false) }
 
     KomoriDialog(title = "Edit Focus", onDismiss = onDismiss, onDelete = onDelete, saveButtonText = "Save", titleAlign = TextAlign.Center, onSave = {
-        onSave(task.copy(title = editedTitle, priority = editedPriority, date = editedDate, time = editedTime, details = editedDetails, subtasks = editedSubtasks.toList(), isCompleted = isCompleted))
+        val todayStr = LocalDate.now().toString()
+        onSave(task.copy(title = editedTitle, priority = editedPriority, date = editedDate, time = editedTime, details = editedDetails, subtasks = editedSubtasks.toList(), repeat = editedRepeat, isCompleted = isCompleted, lastCompletedDate = if (isCompleted && editedRepeat != TaskRepeat.NONE) (task.lastCompletedDate ?: todayStr) else null))
     }) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             TextField(
@@ -811,10 +921,52 @@ fun EditTaskDialog(
                 OutlinedTextField(value = editedDetails, onValueChange = { editedDetails = it }, placeholder = { Text("Add notes...", color = tertiaryColor) }, modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryColor.copy(alpha = 0.5f), unfocusedBorderColor = Color.Transparent, focusedContainerColor = itemBgColor, unfocusedContainerColor = itemBgColor, cursorColor = primaryColor), shape = RoundedCornerShape(12.dp), minLines = 3)
             }
             if (!showDateTime) GreenAddOption("Set Date & Time", PhosphorIcons.Bold.CalendarPlus) { showDateTime = true } else ExpandedOption {
-                SectionHeaderWithClose("WHEN", onClose = { showDateTime = false })
+                SectionHeaderWithClose("WHEN", onClose = {
+                    showDateTime = false
+                    editedDate = null
+                    editedTime = null
+                    editedRepeat = TaskRepeat.NONE
+                })
                 Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     CompactSelector(label = "Date", value = editedDate?.format(dateFormatter) ?: "Set Date", onClick = { showDatePicker = true }, modifier = Modifier.weight(1f))
                     CompactSelector(label = "Time", value = editedTime?.format(timeFormatter) ?: "Set Time", onClick = { showTimePicker = true }, modifier = Modifier.weight(1f))
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "REPEAT",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp, fontFamily = AppFont),
+                    color = tertiaryColor.copy(alpha = 0.8f)
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(TaskRepeat.entries) { repeatOpt ->
+                        val isSelected = editedRepeat == repeatOpt
+                        Surface(
+                            modifier = Modifier
+                                .clickable { editedRepeat = repeatOpt },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) primaryColor else itemBgColor,
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) primaryColor else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                            )
+                        ) {
+                            Text(
+                                text = repeatOpt.label,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontFamily = AppFont,
+                                    fontSize = 11.sp
+                                ),
+                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
                 }
             }
             if (!showPriority) GreenAddOption("Set Priority", PhosphorIcons.Bold.Flag) { showPriority = true } else ExpandedOption {

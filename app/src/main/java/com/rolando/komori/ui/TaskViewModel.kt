@@ -11,7 +11,9 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.rolando.komori.KomoriApplication
 import com.rolando.komori.data.Habit
 import com.rolando.komori.data.Note
+import com.rolando.komori.data.Subroutine
 import com.rolando.komori.data.Task
+import com.rolando.komori.data.TaskRepeat
 import com.rolando.komori.data.TaskRepository
 import com.rolando.komori.data.WeeklyEvent
 import com.rolando.komori.ui.screens.DeleteScope
@@ -51,8 +53,25 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
         }
     }
 
-    fun toggleTask(task: Task, isChecked: Boolean) {
-        viewModelScope.launch { repository.updateTask(task.copy(isCompleted = isChecked)) }
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun toggleTask(task: Task, isChecked: Boolean): Boolean {
+        if (isChecked && task.subtasks.isNotEmpty() && !task.subtasks.all { it.isCompleted }) {
+            return false // Blocked: all subtasks must be accomplished first!
+        }
+        val todayStr = LocalDate.now().toString()
+        val updated = if (isChecked) {
+            task.copy(
+                isCompleted = true,
+                lastCompletedDate = if (task.repeat != TaskRepeat.NONE) todayStr else null
+            )
+        } else {
+            task.copy(
+                isCompleted = false,
+                lastCompletedDate = null
+            )
+        }
+        viewModelScope.launch { repository.updateTask(updated) }
+        return true
     }
 
     fun updateTask(task: Task) {
@@ -155,14 +174,27 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
                 )
                 repository.insertNote(welcomeNote)
             }
+
+            // Reset completed repeating tasks from prior days
+            try {
+                val existingTasks = repository.allTasks.first()
+                val todayStr = LocalDate.now().toString()
+                existingTasks.forEach { task ->
+                    if (task.repeat != TaskRepeat.NONE && task.isCompleted && task.lastCompletedDate != null && task.lastCompletedDate != todayStr) {
+                        val resetSubs = task.subtasks.map { it.copy(isCompleted = false) }
+                        repository.updateTask(task.copy(isCompleted = false, subtasks = resetSubs))
+                    }
+                }
+            } catch (_: Exception) {}
         }
     }
 
-    fun addHabit(name: String, iconName: String, targetDaysPerWeek: Int = 7) {
+    fun addHabit(name: String, iconName: String, targetDaysPerWeek: Int = 7, subroutines: List<Subroutine> = emptyList()) {
         val newHabit = Habit(
             name = name.trim(),
             iconName = iconName,
-            targetDaysPerWeek = targetDaysPerWeek
+            targetDaysPerWeek = targetDaysPerWeek,
+            subroutines = subroutines
         )
         viewModelScope.launch {
             repository.insertHabit(newHabit)
@@ -182,9 +214,18 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
-    fun toggleHabitDate(habit: Habit, date: LocalDate) {
+    fun toggleHabitDate(habit: Habit, date: LocalDate): Boolean {
         val today = LocalDate.now()
         val targetDate = date.toString()
+
+        // Gating: If routine has subroutines, only mark done if all subroutines are accomplished!
+        if (date == today && habit.subroutines.isNotEmpty()) {
+            val effectiveSubs = habit.getEffectiveSubroutines(today)
+            val allDone = effectiveSubs.all { it.isCompleted }
+            if (!habit.isCompletedOn(today) && !allDone) {
+                return false // Cannot mark done! Subroutines must be accomplished first.
+            }
+        }
 
         val newDates = if (habit.completedDates.contains(targetDate)) {
             habit.completedDates - targetDate
@@ -209,7 +250,59 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
         val calculatedBest = Habit.calculateBestStreak(newDates)
         val newBestStreak = maxOf(habit.bestStreak, calculatedBest, newStreak)
 
+        // If unchecking today, also reset subroutines to incomplete
+        val updatedSubroutines = if (date == today && !newDates.contains(targetDate) && habit.subroutines.isNotEmpty()) {
+            habit.subroutines.map { it.copy(isCompleted = false) }
+        } else {
+            habit.subroutines
+        }
+
         val updated = habit.copy(
+            subroutines = updatedSubroutines,
+            subroutinesDate = if (date == today) today.toString() else habit.subroutinesDate,
+            completedDays = newDays,
+            completedDates = newDates,
+            streak = newStreak,
+            bestStreak = newBestStreak
+        )
+        viewModelScope.launch {
+            repository.updateHabit(updated)
+        }
+        return true
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun toggleSubroutine(habit: Habit, subroutineId: String) {
+        val today = LocalDate.now()
+        val todayStr = today.toString()
+        val currentSubs = habit.getEffectiveSubroutines(today)
+        val updatedSubs = currentSubs.map { sub ->
+            if (sub.id == subroutineId) sub.copy(isCompleted = !sub.isCompleted) else sub
+        }
+        val allAccomplished = updatedSubs.isNotEmpty() && updatedSubs.all { it.isCompleted }
+
+        val newDates = if (allAccomplished) {
+            habit.completedDates + todayStr
+        } else {
+            habit.completedDates - todayStr
+        }
+
+        val startOfCurrentWeek = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        val endOfCurrentWeek = startOfCurrentWeek.plusDays(6)
+        val dayIndex = today.dayOfWeek.value - 1
+        val newDays = if (allAccomplished) {
+            habit.completedDays + dayIndex
+        } else {
+            habit.completedDays - dayIndex
+        }
+
+        val newStreak = Habit.calculateStreak(newDates, today)
+        val calculatedBest = Habit.calculateBestStreak(newDates)
+        val newBestStreak = maxOf(habit.bestStreak, calculatedBest, newStreak)
+
+        val updated = habit.copy(
+            subroutines = updatedSubs,
+            subroutinesDate = todayStr,
             completedDays = newDays,
             completedDates = newDates,
             streak = newStreak,

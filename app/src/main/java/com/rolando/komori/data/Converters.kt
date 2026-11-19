@@ -12,7 +12,7 @@ import java.time.LocalTime
 class Converters {
     private val gson = Gson()
 
-    // --- NEW: Priority Converter (Enum <-> String) ---
+    // --- Priority Converter (Enum <-> String) ---
     @TypeConverter
     fun fromPriority(priority: TaskPriority): String {
         return priority.name // Saves "HIGH", "MEDIUM", "LOW" to DB
@@ -27,7 +27,22 @@ class Converters {
         }
     }
 
-    // --- NEW: Subtask List Converter (List <-> JSON String) ---
+    // --- Task Repeat Converter (Enum <-> String) ---
+    @TypeConverter
+    fun fromTaskRepeat(repeat: TaskRepeat?): String {
+        return repeat?.name ?: TaskRepeat.NONE.name
+    }
+
+    @TypeConverter
+    fun toTaskRepeat(value: String?): TaskRepeat {
+        return try {
+            TaskRepeat.valueOf(value ?: TaskRepeat.NONE.name)
+        } catch (e: Exception) {
+            TaskRepeat.NONE
+        }
+    }
+
+    // --- Subtask List Converter (List <-> JSON String) ---
     @TypeConverter
     fun fromSubtaskList(subtasks: List<Subtask>): String {
         return gson.toJson(subtasks)
@@ -37,6 +52,19 @@ class Converters {
     fun toSubtaskList(subtasksString: String): List<Subtask> {
         val listType = object : TypeToken<List<Subtask>>() {}.type
         return gson.fromJson(subtasksString, listType) ?: emptyList()
+    }
+
+    // --- Subroutine List Converter (List <-> JSON String) ---
+    @TypeConverter
+    fun fromSubroutineList(subroutines: List<Subroutine>?): String {
+        return gson.toJson(subroutines ?: emptyList<Subroutine>())
+    }
+
+    @TypeConverter
+    fun toSubroutineList(subroutinesString: String?): List<Subroutine> {
+        if (subroutinesString.isNullOrBlank()) return emptyList()
+        val listType = object : TypeToken<List<Subroutine>>() {}.type
+        return gson.fromJson(subroutinesString, listType) ?: emptyList()
     }
 
     // --- YOUR EXISTING CONVERTERS (Unchanged) ---

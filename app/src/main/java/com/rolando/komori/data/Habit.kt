@@ -9,6 +9,12 @@ import java.time.LocalDate
 import java.time.temporal.TemporalAdjusters
 import java.util.UUID
 
+data class Subroutine(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String,
+    val isCompleted: Boolean = false
+)
+
 @Entity(tableName = "habits")
 data class Habit(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
@@ -19,8 +25,21 @@ data class Habit(
     val streak: Int = 0,
     val bestStreak: Int = 0,
     val targetDaysPerWeek: Int = 7, // Daily = 7, or 1..7
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val subroutines: List<Subroutine> = emptyList(),
+    val subroutinesDate: String? = null
 ) {
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun getEffectiveSubroutines(today: LocalDate = LocalDate.now()): List<Subroutine> {
+        if (subroutines.isEmpty()) return emptyList()
+        val isDoneToday = isCompletedOn(today)
+        val isForToday = subroutinesDate == today.toString()
+        return when {
+            isDoneToday -> subroutines.map { it.copy(isCompleted = true) }
+            isForToday -> subroutines
+            else -> subroutines.map { it.copy(isCompleted = false) }
+        }
+    }
     @RequiresApi(Build.VERSION_CODES.O)
     fun isDayCompletedInCurrentWeek(dayIndex: Int, today: LocalDate = LocalDate.now()): Boolean {
         val startOfWeek = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))

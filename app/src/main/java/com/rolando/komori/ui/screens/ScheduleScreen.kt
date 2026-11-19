@@ -26,6 +26,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.rolando.komori.data.Task
+import com.rolando.komori.data.TaskRepeat
+import com.adamglin.phosphoricons.bold.Check
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.text.style.TextDecoration
 import com.rolando.komori.data.WeeklyEvent
 import com.rolando.komori.ui.theme.AppFont
 import com.rolando.komori.ui.theme.SageGreen
@@ -91,10 +97,13 @@ import kotlin.math.roundToInt
 @Composable
 fun ScheduleScreen(
     events: List<WeeklyEvent>,
+    tasks: List<Task> = emptyList(),
     jumpToDate: LocalDate?,
     onVisibleDateChanged: (LocalDate) -> Unit,
     onBottomReached: (Boolean) -> Unit = {},
     onEventClick: (WeeklyEvent) -> Unit,
+    onTaskClick: (Task) -> Unit = {},
+    onTaskToggleComplete: (Task) -> Unit = {},
     onAddEvent: (WeeklyEvent) -> Unit,
     onFabVisibilityChange: (Boolean) -> Unit
 ) {
@@ -384,6 +393,24 @@ fun ScheduleScreen(
                                             }
                                         }
 
+                                        // FILTER TASKS WITH TIME ONLY (single line like time indicator)
+                                        val timedTasks = tasks.filter { task ->
+                                            task.time != null && task.isOnCalendarDate(date)
+                                        }
+
+                                        timedTasks.forEach { task ->
+                                            val tTime = task.time!!
+                                            val taskStart = tTime.hour + (tTime.minute / 60f)
+                                            val lineOffset = hourHeight * (taskStart - startHour)
+                                            CalendarTaskLine(
+                                                task = task,
+                                                onClick = { onTaskClick(task) },
+                                                modifier = Modifier
+                                                    .offset(y = lineOffset - 10.dp)
+                                                    .zIndex(40f)
+                                            )
+                                        }
+
                                         if (ghostDate == date && ghostStartTime != null && ghostEndTime != null) {
                                             InteractiveGhostCard(
                                                 startTime = ghostStartTime!!,
@@ -400,21 +427,72 @@ fun ScheduleScreen(
                                             val now = currentTime
                                             val currentHourVal = now.hour + (now.minute / 60f)
                                             val lineOffset = hourHeight * (currentHourVal - startHour)
-                                            Canvas(
-                                                modifier = Modifier.fillMaxWidth().height(2.dp).offset(y = lineOffset)
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(24.dp)
+                                                    .offset(y = lineOffset - 12.dp)
+                                                    .zIndex(100f)
                                             ) {
-                                                // FIX: Use Theme Color
-                                                drawLine(
-                                                    color = primaryColor,
-                                                    start = Offset(0f, 0f),
-                                                    end = Offset(size.width, 0f),
-                                                    strokeWidth = 4f
-                                                )
-                                                drawCircle(
-                                                    color = primaryColor,
-                                                    radius = 6f,
-                                                    center = Offset(0f, 0f)
-                                                )
+                                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                                    val y = size.height / 2f
+                                                    val w = size.width
+
+                                                    // Outer soft ambient glow
+                                                    drawLine(
+                                                        color = primaryColor.copy(alpha = 0.15f),
+                                                        start = Offset(0f, y),
+                                                        end = Offset(w, y),
+                                                        strokeWidth = 14f,
+                                                        cap = StrokeCap.Round
+                                                    )
+                                                    // Mid glow
+                                                    drawLine(
+                                                        color = primaryColor.copy(alpha = 0.35f),
+                                                        start = Offset(0f, y),
+                                                        end = Offset(w, y),
+                                                        strokeWidth = 7f,
+                                                        cap = StrokeCap.Round
+                                                    )
+                                                    // Core luminous line
+                                                    drawLine(
+                                                        color = primaryColor,
+                                                        start = Offset(0f, y),
+                                                        end = Offset(w, y),
+                                                        strokeWidth = 3f,
+                                                        cap = StrokeCap.Round
+                                                    )
+                                                    // Inner white highlight for bloom
+                                                    drawLine(
+                                                        color = Color.White.copy(alpha = 0.6f),
+                                                        start = Offset(0f, y),
+                                                        end = Offset(w, y),
+                                                        strokeWidth = 1.2f,
+                                                        cap = StrokeCap.Round
+                                                    )
+
+                                                    // Glowing indicator dot on left
+                                                    drawCircle(
+                                                        color = primaryColor.copy(alpha = 0.18f),
+                                                        radius = 12f,
+                                                        center = Offset(2f, y)
+                                                    )
+                                                    drawCircle(
+                                                        color = primaryColor.copy(alpha = 0.4f),
+                                                        radius = 7.5f,
+                                                        center = Offset(2f, y)
+                                                    )
+                                                    drawCircle(
+                                                        color = primaryColor,
+                                                        radius = 4.5f,
+                                                        center = Offset(2f, y)
+                                                    )
+                                                    drawCircle(
+                                                        color = Color.White,
+                                                        radius = 1.8f,
+                                                        center = Offset(2f, y)
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -931,6 +1009,58 @@ fun EventCard(event: WeeklyEvent, modifier: Modifier = Modifier) {
     Surface(color = event.color.copy(alpha = 0.25f), shape = RoundedCornerShape(4.dp), border = BorderStroke(1.dp, event.color.copy(alpha = 0.5f)), modifier = modifier) {
         Column(modifier = Modifier.fillMaxSize().padding(3.dp), verticalArrangement = Arrangement.Top) {
             Text(text = event.title, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = AppFont, lineHeight = 11.sp), color = MaterialTheme.colorScheme.onSurface)
+        }
+    }
+}
+
+@Composable
+fun CalendarTaskLine(
+    task: Task,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val taskColor = Color(task.priority.color)
+    val isCompleted = task.isCompleted
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(20.dp)
+            .clickable(onClick = onClick)
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val y = size.height / 2f
+            val w = size.width
+            val color = if (isCompleted) taskColor.copy(alpha = 0.35f) else taskColor
+
+            if (isCompleted) {
+                // Dashed muted line for completed task (line only, no dot)
+                drawLine(
+                    color = color,
+                    start = Offset(0f, y),
+                    end = Offset(w, y),
+                    strokeWidth = 2f,
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f),
+                    cap = StrokeCap.Round
+                )
+            } else {
+                // Subtle priority glow
+                drawLine(
+                    color = color.copy(alpha = 0.22f),
+                    start = Offset(0f, y),
+                    end = Offset(w, y),
+                    strokeWidth = 5f,
+                    cap = StrokeCap.Round
+                )
+                // Crisp single line (line only, no dot)
+                drawLine(
+                    color = color,
+                    start = Offset(0f, y),
+                    end = Offset(w, y),
+                    strokeWidth = 2.5f,
+                    cap = StrokeCap.Round
+                )
+            }
         }
     }
 }

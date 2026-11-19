@@ -522,6 +522,7 @@ fun ThemeCircle(theme: AppThemeOption, isSelected: Boolean, onClick: () -> Unit)
         AppThemeOption.Ocean -> OceanPrimary
         AppThemeOption.Sakura -> SakuraPrimary
         AppThemeOption.Lavender -> LavenderPrimary
+        AppThemeOption.Paper -> PaperPrimary
     }
 
     Box(

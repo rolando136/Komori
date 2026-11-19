@@ -3,9 +3,13 @@ package com.rolando.komori.ui.theme
 import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -18,7 +22,8 @@ enum class AppThemeOption {
     Coffee,   // Brown
     Ocean,    // Blue
     Sakura,   // Pink (New)
-    Lavender  // Purple (New)
+    Lavender, // Purple (New)
+    Paper     // Warm Paper (New)
 }
 
 // --- EXISTING SCHEMES (Green, Coffee, Ocean) ---
@@ -116,6 +121,23 @@ private val LavenderDarkScheme = darkColorScheme(
     surfaceVariant = Color(0xFF201D25)
 )
 
+// 6. PAPER (Warm Stationery)
+private val PaperLightScheme = lightColorScheme(
+    primary = PaperPrimary, secondary = PaperDark, tertiary = PaperTertiary,
+    background = PaperBackground,
+    surface = PaperSurface, onPrimary = Color.White,
+    surfaceContainerHigh = PaperContainer,
+    surfaceVariant = PaperContainer
+)
+private val PaperDarkScheme = darkColorScheme(
+    primary = Color(0xFFCBB79F), secondary = Color(0xFFCBB79F), tertiary = PaperTertiary,
+    background = PaperDarkBg,
+    surface = PaperDarkSurface,
+    onPrimary = Color.White,
+    surfaceContainerHigh = PaperDarkContainer,
+    surfaceVariant = PaperDarkContainer
+)
+
 @Composable
 fun KomoriTheme(
     themeOption: AppThemeOption = AppThemeOption.Komori,
@@ -129,6 +151,7 @@ fun KomoriTheme(
         AppThemeOption.Ocean    -> if (darkTheme) OceanDarkScheme else OceanLightScheme
         AppThemeOption.Sakura   -> if (darkTheme) SakuraDarkScheme else SakuraLightScheme
         AppThemeOption.Lavender -> if (darkTheme) LavenderDarkScheme else LavenderLightScheme
+        AppThemeOption.Paper    -> if (darkTheme) PaperDarkScheme else PaperLightScheme
     }
 
     val view = LocalView.current
@@ -140,9 +163,21 @@ fun KomoriTheme(
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    CompositionLocalProvider(
+        LocalAppTheme provides themeOption,
+        LocalIsDarkTheme provides darkTheme
+    ) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .paperGrain()
+            ) {
+                content()
+            }
+        }
+    }
 }

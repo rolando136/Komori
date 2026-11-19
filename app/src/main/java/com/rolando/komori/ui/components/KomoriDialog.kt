@@ -24,6 +24,7 @@ import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Bold
 import com.adamglin.phosphoricons.bold.Trash
 import com.adamglin.phosphoricons.bold.X
+import com.rolando.komori.ui.theme.paperGrain
 
 @Composable
 fun KomoriDialog(
@@ -53,6 +54,7 @@ fun KomoriDialog(
             modifier = Modifier
                 .fillMaxWidth(0.96f)
                 .padding(16.dp)
+                .paperGrain()
         ) {
             Column(
                 modifier = Modifier

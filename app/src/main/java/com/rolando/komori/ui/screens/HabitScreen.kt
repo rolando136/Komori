@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,7 +30,9 @@ import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Bold
 import com.adamglin.phosphoricons.bold.*
 import com.rolando.komori.data.Habit
+import com.rolando.komori.data.Subroutine
 import com.rolando.komori.ui.components.KomoriDialog
+import com.rolando.komori.ui.components.SubroutineEntrySection
 import com.rolando.komori.ui.theme.AppFont
 import com.rolando.komori.ui.theme.StoneGray
 import java.time.DayOfWeek
@@ -68,6 +71,7 @@ fun HabitsScreen(
         val dayIndex = date.dayOfWeek.value - 1
         onDayToggle(habit, dayIndex)
     },
+    onToggleSubroutine: ((Habit, String) -> Unit)? = null,
     onHabitClick: (Habit) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -205,6 +209,7 @@ fun HabitsScreen(
                     habit = habit,
                     startOfWeek = selectedWeekMonday,
                     onDateToggle = { date -> onDateToggle(habit, date) },
+                    onToggleSubroutine = { subId -> onToggleSubroutine?.invoke(habit, subId) },
                     onClick = { onHabitClick(habit) }
                 )
             }
@@ -218,6 +223,7 @@ fun HabitCard(
     habit: Habit,
     startOfWeek: LocalDate = LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)),
     onDateToggle: (LocalDate) -> Unit,
+    onToggleSubroutine: ((String) -> Unit)? = null,
     onClick: () -> Unit
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
@@ -233,6 +239,9 @@ fun HabitCard(
     }
     val targetDays = habit.targetDaysPerWeek.coerceIn(1, 7)
     val progressFraction = (completedThisWeek.toFloat() / targetDays.toFloat()).coerceIn(0f, 1f)
+    val effectiveSubroutines = remember(habit, today) {
+        habit.getEffectiveSubroutines(today)
+    }
 
     Surface(
         modifier = Modifier
@@ -473,6 +482,88 @@ fun HabitCard(
                     }
                 }
             }
+
+            // Subroutines Checklist Section (for today)
+            if (effectiveSubroutines.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(14.dp))
+                HorizontalDivider(color = outlineColor.copy(alpha = 0.5f), thickness = 0.5.dp)
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Today's Subroutines",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = AppFont,
+                            letterSpacing = 0.5.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    val doneCount = effectiveSubroutines.count { it.isCompleted }
+                    Text(
+                        text = "$doneCount/${effectiveSubroutines.size}",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = AppFont
+                        ),
+                        color = if (doneCount == effectiveSubroutines.size) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    effectiveSubroutines.forEach { sub ->
+                        val subShape = RoundedCornerShape(6.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onToggleSubroutine?.invoke(sub.id) }
+                                .padding(vertical = 4.dp, horizontal = 2.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .clip(subShape)
+                                    .background(if (sub.isCompleted) primaryColor else Color.Transparent)
+                                    .border(
+                                        width = 1.5.dp,
+                                        color = if (sub.isCompleted) primaryColor else outlineColor,
+                                        shape = subShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (sub.isCompleted) {
+                                    Icon(
+                                        imageVector = PhosphorIcons.Bold.Check,
+                                        contentDescription = "Completed",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = sub.title,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = AppFont,
+                                    fontSize = 13.sp
+                                ),
+                                color = if (sub.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface,
+                                textDecoration = if (sub.isCompleted) TextDecoration.LineThrough else null,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -486,12 +577,16 @@ fun HabitDetailDialog(
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
     onDateToggle: (LocalDate) -> Unit,
+    onToggleSubroutine: ((String) -> Unit)? = null,
     onDelete: () -> Unit
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     val tertiaryColor = MaterialTheme.colorScheme.tertiary
     val surfaceContainer = MaterialTheme.colorScheme.surfaceContainerHigh
     val today = LocalDate.now()
+    val effectiveSubroutines = remember(habit, today) {
+        habit.getEffectiveSubroutines(today)
+    }
 
     var monthOffset by remember { mutableIntStateOf(0) }
     val displayMonth = remember(monthOffset) {
@@ -734,6 +829,96 @@ fun HabitDetailDialog(
                 }
             }
 
+            // Subroutines in Detail Dialog
+            if (effectiveSubroutines.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    color = surfaceContainer,
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "DAILY SUBROUTINES",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    fontFamily = AppFont
+                                ),
+                                color = tertiaryColor.copy(alpha = 0.8f)
+                            )
+                            val doneCount = effectiveSubroutines.count { it.isCompleted }
+                            Text(
+                                text = "$doneCount/${effectiveSubroutines.size}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = AppFont
+                                ),
+                                color = if (doneCount == effectiveSubroutines.size) primaryColor else tertiaryColor
+                            )
+                        }
+
+                        effectiveSubroutines.forEach { sub ->
+                            val subShape = RoundedCornerShape(6.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onToggleSubroutine?.invoke(sub.id) }
+                                    .padding(vertical = 4.dp, horizontal = 2.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clip(subShape)
+                                        .background(if (sub.isCompleted) primaryColor else Color.Transparent)
+                                        .border(
+                                            width = 1.5.dp,
+                                            color = if (sub.isCompleted) primaryColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                                            shape = subShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (sub.isCompleted) {
+                                        Icon(
+                                            imageVector = PhosphorIcons.Bold.Check,
+                                            contentDescription = "Completed",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = sub.title,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontFamily = AppFont
+                                    ),
+                                    color = if (sub.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface,
+                                    textDecoration = if (sub.isCompleted) TextDecoration.LineThrough else null,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Edit Ritual Button
             OutlinedButton(
                 onClick = onEdit,
@@ -816,11 +1001,12 @@ private fun MetricChip(
 @Composable
 fun AddHabitDialog(
     onDismiss: () -> Unit,
-    onSave: (String, String, Int) -> Unit
+    onSave: (String, String, Int, List<Subroutine>) -> Unit
 ) {
     var habitName by remember { mutableStateOf("") }
     var selectedIcon by remember { mutableStateOf(AvailableHabitIcons.first().first) }
     var targetDays by remember { mutableIntStateOf(7) }
+    val subroutines = remember { mutableStateListOf<Subroutine>() }
 
     val primaryColor = MaterialTheme.colorScheme.primary
     val tertiaryColor = MaterialTheme.colorScheme.tertiary
@@ -833,7 +1019,7 @@ fun AddHabitDialog(
         saveButtonText = "Save Ritual",
         onSave = {
             if (habitName.isNotBlank()) {
-                onSave(habitName.trim(), selectedIcon, targetDays)
+                onSave(habitName.trim(), selectedIcon, targetDays, subroutines.toList())
             }
         }
     ) {
@@ -864,6 +1050,24 @@ fun AddHabitDialog(
                 ),
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
+            )
+
+            // Subroutines Section
+            Text(
+                text = "SUBROUTINES (OPTIONAL)",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    fontFamily = AppFont
+                ),
+                color = tertiaryColor.copy(alpha = 0.8f),
+                modifier = Modifier.padding(start = 4.dp)
+            )
+
+            SubroutineEntrySection(
+                subroutines = subroutines,
+                onAddSubroutine = { subroutines.add(Subroutine(title = it)) },
+                onRemoveSubroutine = { subroutines.removeAt(it) }
             )
 
             // Target Frequency
@@ -961,6 +1165,7 @@ fun EditHabitDialog(
     var editedName by remember { mutableStateOf(habit.name) }
     var selectedIcon by remember { mutableStateOf(habit.iconName) }
     var targetDays by remember { mutableIntStateOf(habit.targetDaysPerWeek) }
+    val editedSubroutines = remember { mutableStateListOf(*habit.subroutines.toTypedArray()) }
 
     val primaryColor = MaterialTheme.colorScheme.primary
     val tertiaryColor = MaterialTheme.colorScheme.tertiary
@@ -978,7 +1183,8 @@ fun EditHabitDialog(
                     habit.copy(
                         name = editedName.trim(),
                         iconName = selectedIcon,
-                        targetDaysPerWeek = targetDays
+                        targetDaysPerWeek = targetDays,
+                        subroutines = editedSubroutines.toList()
                     )
                 )
             }
@@ -1011,6 +1217,24 @@ fun EditHabitDialog(
                 ),
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
+            )
+
+            // Subroutines Section
+            Text(
+                text = "SUBROUTINES (OPTIONAL)",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    fontFamily = AppFont
+                ),
+                color = tertiaryColor.copy(alpha = 0.8f),
+                modifier = Modifier.padding(start = 4.dp)
+            )
+
+            SubroutineEntrySection(
+                subroutines = editedSubroutines,
+                onAddSubroutine = { editedSubroutines.add(Subroutine(title = it)) },
+                onRemoveSubroutine = { editedSubroutines.removeAt(it) }
             )
 
             // Target Frequency

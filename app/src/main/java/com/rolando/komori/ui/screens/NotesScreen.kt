@@ -1,5 +1,6 @@
 package com.rolando.komori.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -55,8 +56,12 @@ fun NotesScreen(
         // Search bar (only show if there are notes or if query active)
         if (notes.isNotEmpty() || searchQuery.isNotBlank()) {
             Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = surfaceColor,
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                border = BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 8.dp)
@@ -152,16 +157,18 @@ fun NoteCard(
     val primaryColor = MaterialTheme.colorScheme.primary
     val tertiaryColor = MaterialTheme.colorScheme.tertiary
     val surfaceColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    val outlineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
     val dateFormatter = remember { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
     val formattedDate = remember(note.timestamp) { dateFormatter.format(Date(note.timestamp)) }
 
     Surface(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(24.dp),
         color = surfaceColor,
+        border = BorderStroke(1.dp, outlineColor),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(24.dp))
             .clickable { onClick() }
     ) {
         Column(modifier = Modifier.padding(18.dp)) {

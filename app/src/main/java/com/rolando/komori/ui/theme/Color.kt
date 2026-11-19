@@ -36,3 +36,14 @@ val LavenderPrimary = Color(0xFFA699B5) // Muted Lilac
 val LavenderSurface = Color(0xFFF6F4F8) // Ghost purple
 val LavenderDark    = Color(0xFF4A3E56)
 val Wisteria        = Color(0xFFD8D0E0)
+
+// --- PAPER (Warm / Minimal / Stationery) ---
+val PaperPrimary    = Color(0xFF8C7355) // Warm Sepia / Muted Ink
+val PaperSurface    = Color(0xFFFDFBF7) // Warm Cream Rice Paper
+val PaperBackground = Color(0xFFF5F0E8) // Soft Parchment
+val PaperContainer  = Color(0xFFEBE3D5) // Kraft Tint
+val PaperDark       = Color(0xFF4A3E31) // Deep Walnut
+val PaperDarkSurface= Color(0xFF1B1917) // Dark Paper Slate
+val PaperDarkBg     = Color(0xFF131210) // Antique Book Charcoal
+val PaperDarkContainer = Color(0xFF262320)
+val PaperTertiary   = Color(0xFF7A6F62) // Soft Warm Stone
