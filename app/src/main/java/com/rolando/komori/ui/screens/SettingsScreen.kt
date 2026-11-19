@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.core.content.FileProvider
+import java.io.File
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -468,13 +470,40 @@ fun SettingsScreen(
 }
 
 private fun shareJson(context: Context, json: String) {
-    val sendIntent = Intent().apply {
-        action = Intent.ACTION_SEND
-        putExtra(Intent.EXTRA_TEXT, json)
-        type = "application/json"
+    try {
+        val backupDir = File(context.cacheDir, "backups").apply { if (!exists()) mkdirs() }
+        val timestamp = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmm"))
+        } else {
+            System.currentTimeMillis().toString()
+        }
+        val file = File(backupDir, "komori_backup_$timestamp.json")
+        file.writeText(json, Charsets.UTF_8)
+
+        val uri: Uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+
+        val sendIntent = Intent().apply {
+            action = Intent.ACTION_SEND
+            putExtra(Intent.EXTRA_STREAM, uri)
+            type = "application/json"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val shareIntent = Intent.createChooser(sendIntent, "Share Komori Backup")
+        context.startActivity(shareIntent)
+    } catch (e: Exception) {
+        // Fallback to plain text share if file sharing encounters issues
+        val sendIntent = Intent().apply {
+            action = Intent.ACTION_SEND
+            putExtra(Intent.EXTRA_TEXT, json)
+            type = "application/json"
+        }
+        val shareIntent = Intent.createChooser(sendIntent, "Share Komori Backup")
+        context.startActivity(shareIntent)
     }
-    val shareIntent = Intent.createChooser(sendIntent, "Share Komori Backup")
-    context.startActivity(shareIntent)
 }
 
 // --- HELPER COMPOSABLES ---

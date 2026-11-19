@@ -16,6 +16,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.rolando.komori.data.ThemeManager
+import com.rolando.komori.ui.TaskViewModel
 import com.rolando.komori.ui.ThemeViewModel
 import com.rolando.komori.ui.screens.AnalyticsScreen
 import com.rolando.komori.ui.screens.SettingsScreen
@@ -35,6 +36,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val navController = rememberNavController()
             val themeViewModel: ThemeViewModel = viewModel()
+            val taskViewModel: TaskViewModel = viewModel(factory = TaskViewModel.Factory)
             val context = LocalContext.current
             val themeManager = remember { ThemeManager(context) }
 
@@ -51,7 +53,7 @@ class MainActivity : ComponentActivity() {
                         SplashScreen(navController = navController)
                     }
                     composable("home") {
-                        TasksScreen(navController = navController)
+                        TasksScreen(navController = navController, viewModel = taskViewModel)
                     }
                     composable("settings") {
                         SettingsScreen(
@@ -59,11 +61,12 @@ class MainActivity : ComponentActivity() {
                             currentTheme = currentTheme,
                             onThemeSelected = { newTheme ->
                                 themeViewModel.setTheme(newTheme)
-                            }
+                            },
+                            taskViewModel = taskViewModel
                         )
                     }
                     composable("analytics") {
-                        AnalyticsScreen(navController = navController)
+                        AnalyticsScreen(navController = navController, viewModel = taskViewModel)
                     }
                 }
             }

@@ -1,5 +1,7 @@
 package com.rolando.komori.ui
 
+import android.app.Application
+import android.content.Context
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.lifecycle.ViewModel
@@ -29,7 +31,12 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.temporal.TemporalAdjusters
 
-class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
+class TaskViewModel(
+    private val repository: TaskRepository,
+    application: Application? = null
+) : ViewModel() {
+
+    private val prefs = application?.getSharedPreferences("komori_prefs", Context.MODE_PRIVATE)
 
     // --- TASKS ---
     val allTasks: StateFlow<List<Task>?> = repository.allTasks
@@ -151,28 +158,33 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
         )
 
     init {
-        // Seed default habits and welcome note on first run if empty
+        // Seed default habits and welcome note strictly once on first install
         viewModelScope.launch(Dispatchers.IO) {
-            val existingHabits = repository.allHabits.first()
-            if (existingHabits.isEmpty()) {
-                val defaults = listOf(
-                    Habit(name = "Morning Meditation", iconName = "FlowerLotus"),
-                    Habit(name = "Read 20 Pages", iconName = "BookOpen"),
-                    Habit(name = "Drink 2L Water", iconName = "Drop"),
-                    Habit(name = "Workout / Gym", iconName = "Barbell"),
-                    Habit(name = "Evening Journal", iconName = "PencilSimple")
-                )
-                repository.insertHabits(defaults)
-            }
+            val isSeeded = prefs?.getBoolean("initial_samples_seeded", false) ?: false
+            if (!isSeeded) {
+                val existingHabits = repository.allHabits.first()
+                if (existingHabits.isEmpty()) {
+                    val defaults = listOf(
+                        Habit(name = "Morning Meditation", iconName = "FlowerLotus"),
+                        Habit(name = "Read 20 Pages", iconName = "BookOpen"),
+                        Habit(name = "Drink 2L Water", iconName = "Drop"),
+                        Habit(name = "Workout / Gym", iconName = "Barbell"),
+                        Habit(name = "Evening Journal", iconName = "PencilSimple")
+                    )
+                    repository.insertHabits(defaults)
+                }
 
-            val existingNotes = repository.allNotes.first()
-            if (existingNotes.isEmpty()) {
-                val welcomeNote = Note(
-                    title = "Welcome to Komori",
-                    content = "Komori (木漏れ日) is the sunlight filtering through trees.\n\nA quiet space to organize your focus, nurture daily rituals, keep your calendar, and collect your thoughts with calm clarity.",
-                    isPinned = true
-                )
-                repository.insertNote(welcomeNote)
+                val existingNotes = repository.allNotes.first()
+                if (existingNotes.isEmpty()) {
+                    val welcomeNote = Note(
+                        title = "Welcome to Komori",
+                        content = "Komori (木漏れ日) is the sunlight filtering through trees.\n\nA quiet space to organize your focus, nurture daily rituals, keep your calendar, and collect your thoughts with calm clarity.",
+                        isPinned = true
+                    )
+                    repository.insertNote(welcomeNote)
+                }
+
+                prefs?.edit()?.putBoolean("initial_samples_seeded", true)?.apply()
             }
 
             // Reset completed repeating tasks from prior days
@@ -373,7 +385,7 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val application = (this[APPLICATION_KEY] as KomoriApplication)
-                TaskViewModel(application.repository)
+                TaskViewModel(application.repository, application)
             }
         }
     }
