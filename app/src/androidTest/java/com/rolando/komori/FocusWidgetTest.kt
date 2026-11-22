@@ -1,16 +1,17 @@
 package com.rolando.komori
 
 import android.content.BroadcastReceiver
-import android.app.WallpaperColors
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.view.View
 import android.view.Gravity
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.graphics.ColorUtils
@@ -22,8 +23,7 @@ import com.rolando.komori.data.Task
 import com.rolando.komori.data.TaskRepeat
 import com.rolando.komori.widget.FocusWidgetProvider
 import com.rolando.komori.widget.WidgetAppearance
-import com.rolando.komori.widget.WidgetTheme
-import com.rolando.komori.widget.WidgetWallpaper
+import com.rolando.komori.widget.WidgetStyle
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -103,19 +103,20 @@ class FocusWidgetTest {
         }
     }
 
-    @Test fun widgetRendersCardsAndAccessibleWallpaperColors() {
+    @Test fun widgetRendersCardsAndAlwaysShowsEditButton() {
         instrumentation.runOnMainSync {
             val tasks = (1..4).map { task("Focus task $it") }
             val view = FocusWidgetProvider.createViews(context, tasks).apply(context, FrameLayout(context))
             assertEquals(3, view.findViewById<LinearLayout>(R.id.widget_tasks).childCount)
-            assertEquals("4", view.findViewById<TextView>(R.id.widget_summary).text.toString())
+            assertEquals(View.VISIBLE, view.findViewById<View>(R.id.widget_edit).visibility)
+            assertTrue(view.findViewById<TextView>(R.id.widget_header).typeface.isBold)
             assertEquals(View.GONE, view.findViewById<View>(R.id.widget_empty).visibility)
             val foreground = context.getColor(R.color.widget_foreground)
             val surface = context.getColor(R.color.widget_surface)
             assertTrue(ColorUtils.calculateContrast(foreground, surface) >= 4.5)
             val empty = FocusWidgetProvider.createViews(context, emptyList()).apply(context, FrameLayout(context))
             assertEquals(View.VISIBLE, empty.findViewById<View>(R.id.widget_empty).visibility)
-            assertEquals(View.GONE, empty.findViewById<View>(R.id.widget_summary).visibility)
+            assertEquals(View.VISIBLE, empty.findViewById<View>(R.id.widget_edit).visibility)
             assertEquals(View.GONE, empty.findViewById<View>(R.id.widget_tasks).visibility)
             val message = empty.findViewById<TextView>(R.id.widget_empty)
             assertNull(message.background)
@@ -127,60 +128,67 @@ class FocusWidgetTest {
         }
     }
 
-    @Test fun glassThemePersistsRendersTranslucentlyAndKeepsTitleBold() = runBlocking {
-        val previous = WidgetAppearance.read(context)
+    @Test fun appearanceIsSavedPerWidgetAndRestoresToNewIds() = runBlocking {
+        val ids = intArrayOf(90001, 90002, 90003)
         try {
-            WidgetAppearance.save(context, WidgetTheme.Glass)
-            assertEquals(WidgetTheme.Glass, WidgetAppearance.read(context))
-            instrumentation.runOnMainSync {
-                val view = FocusWidgetProvider.createViews(context, listOf(task("Glass task")))
-                    .apply(context, FrameLayout(context))
-                assertTrue(view.findViewById<TextView>(R.id.widget_focus_title).typeface.isBold)
-                assertNotNull(view.findViewById<ImageButton>(R.id.widget_task_check))
-                val bitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
-                val background = view.background
-                background.setBounds(0, 0, 100, 100)
-                background.draw(Canvas(bitmap))
-                val alpha = Color.alpha(bitmap.getPixel(50, 50))
-                assertTrue("Glass background should stay translucent", alpha in 1..254)
-                bitmap.recycle()
-            }
-            WidgetAppearance.save(context, WidgetTheme.Solid)
-            assertEquals(WidgetTheme.Solid, WidgetAppearance.read(context))
-        } finally { WidgetAppearance.save(context, previous) }
+            val first = WidgetStyle(Color.rgb(45, 65, 85), 0.42f)
+            val second = WidgetStyle(Color.WHITE, 1f)
+            WidgetAppearance.save(context, ids[0], first)
+            WidgetAppearance.save(context, ids[1], second)
+            assertEquals(first, WidgetAppearance.read(context, ids[0]))
+            assertEquals(second, WidgetAppearance.read(context, ids[1]))
+            WidgetAppearance.restore(context, intArrayOf(ids[0]), intArrayOf(ids[2]))
+            assertEquals(first, WidgetAppearance.read(context, ids[2]))
+        } finally { WidgetAppearance.delete(context, ids) }
     }
 
-    @Test
-    @SdkSuppress(minSdkVersion = 27)
-    fun wallpaperBrightnessChoosesDarkOrLight() {
-        assertTrue(WidgetWallpaper.isDark(WallpaperColors(Color.valueOf(Color.BLACK), null, null)))
-        assertFalse(WidgetWallpaper.isDark(WallpaperColors(Color.valueOf(Color.WHITE), null, null)))
-    }
-
-    @Test fun widgetPaletteFollowsWallpaperInsteadOfSystemAppearance() = runBlocking {
-        val previous = WidgetAppearance.read(context)
-        try {
-            for (theme in WidgetTheme.entries) {
-                WidgetAppearance.save(context, theme)
-                instrumentation.runOnMainSync {
-                    for (dark in listOf(true, false)) {
-                        val view = FocusWidgetProvider.createViews(context, listOf(task("Adaptive task")), darkWallpaper = dark)
-                            .apply(context, FrameLayout(context))
-                        val text = view.findViewById<TextView>(R.id.widget_focus_title)
-                        assertEquals(context.getColor(if (dark) R.color.widget_auto_dark_text else R.color.widget_auto_light_text),
-                            text.currentTextColor)
-                        val bitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
-                        view.background.setBounds(0, 0, 100, 100)
-                        view.background.draw(Canvas(bitmap))
-                        assertEquals("Background should be flat, not a gradient",
-                            bitmap.getPixel(50, 35), bitmap.getPixel(50, 65))
-                        val opaque = ColorUtils.setAlphaComponent(bitmap.getPixel(50, 50), 255)
-                        assertEquals(dark, ColorUtils.calculateLuminance(opaque) < 0.45)
-                        assertTrue(ColorUtils.calculateContrast(text.currentTextColor, opaque) >= 4.5)
-                        bitmap.recycle()
-                    }
+    @Test fun manualColorAndOpacityRenderWithoutDimmingText() {
+        instrumentation.runOnMainSync {
+            for (color in listOf(Color.BLACK, Color.WHITE, Color.RED, Color.GRAY)) {
+                for (opacity in listOf(0f, 0.5f, 1f)) {
+                    val style = WidgetStyle(color, opacity)
+                    val view = FocusWidgetProvider.createViews(context, listOf(task("Custom task")), style = style)
+                        .apply(context, FrameLayout(context))
+                    val text = view.findViewById<TextView>(R.id.widget_header)
+                    assertEquals(style.foreground, text.currentTextColor)
+                    assertEquals(255, Color.alpha(text.currentTextColor))
+                    assertTrue(ColorUtils.calculateContrast(style.foreground, style.color) >= 4.5)
+                    val bitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
+                    val background = view.findViewById<ImageView>(R.id.widget_background_image).drawable
+                    background.setBounds(0, 0, 100, 100)
+                    background.draw(Canvas(bitmap))
+                    assertEquals((opacity * 255).toInt().toDouble(), Color.alpha(bitmap.getPixel(50, 50)).toDouble(), 1.0)
+                    assertEquals(bitmap.getPixel(50, 35), bitmap.getPixel(50, 65))
+                    bitmap.recycle()
                 }
             }
-        } finally { WidgetAppearance.save(context, previous) }
+        }
+    }
+
+    @Test fun roundedSurfacesKeepTheirRadiusAndHaveNoOutlineAfterResize() {
+        instrumentation.runOnMainSync {
+            val style = WidgetStyle(Color.rgb(40, 65, 90), 0.5f)
+            val view = FocusWidgetProvider.createViews(context, listOf(task("Rounded task")), style = style)
+                .apply(context, FrameLayout(context))
+            for ((width, height) in listOf(700 to 900, 1200 to 600)) {
+                view.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
+                view.layout(0, 0, width, height)
+                for ((id, radiusId) in listOf(R.id.widget_background_image to R.dimen.widget_corner_radius,
+                    R.id.widget_card_image to R.dimen.widget_card_corner_radius)) {
+                    val image = view.findViewById<ImageView>(id)
+                    val shape = image.drawable as GradientDrawable
+                    assertEquals(context.resources.getDimension(radiusId), shape.cornerRadius, 0.01f)
+                    val bitmap = Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
+                    shape.setBounds(0, 0, image.width, image.height)
+                    shape.draw(Canvas(bitmap))
+                    val center = bitmap.getPixel(image.width / 2, image.height / 2)
+                    assertEquals("No outline along straight edges", center, bitmap.getPixel(1, image.height / 2))
+                    assertEquals("Rounded corners must be transparent", 0, Color.alpha(bitmap.getPixel(0, 0)))
+                    assertEquals(127.0, Color.alpha(center).toDouble(), 1.0)
+                    bitmap.recycle()
+                }
+            }
+        }
     }
 }

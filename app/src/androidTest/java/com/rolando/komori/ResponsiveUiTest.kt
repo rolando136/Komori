@@ -13,6 +13,10 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.unit.dp
@@ -20,6 +24,9 @@ import androidx.test.filters.SdkSuppress
 import com.rolando.komori.ui.screens.ScheduleScreen
 import com.rolando.komori.ui.screens.ThemeSelector
 import com.rolando.komori.ui.theme.AppThemeOption
+import com.rolando.komori.widget.WidgetAppearanceEditor
+import com.rolando.komori.widget.WidgetStyle
+import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import java.time.LocalDate
@@ -38,6 +45,32 @@ class ResponsiveUiTest {
         }
         compose.onNodeWithContentDescription("Paper").performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription("Komori").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun widgetEditorSavesExactColorAndOpacity() {
+        var saved: WidgetStyle? = null
+        compose.setContent { MaterialTheme {
+            WidgetAppearanceEditor(WidgetStyle(), onCancel = {}, onSave = { saved = it })
+        } }
+        compose.onNodeWithText("Hex color").performScrollTo().performTextReplacement("315975")
+        compose.onNodeWithContentDescription("Opacity").performScrollTo()
+            .performSemanticsAction(SemanticsActions.SetProgress) { it(0.35f) }
+        compose.onNodeWithText("Save widget").performClick()
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(android.graphics.Color.parseColor("#315975"), saved?.color)
+            assertEquals(0.35f, saved!!.opacity, 0.001f)
+        }
+    }
+
+    @Test fun widgetEditorCancelDoesNotSaveDraft() {
+        var saved = false
+        var cancelled = false
+        compose.setContent { MaterialTheme {
+            WidgetAppearanceEditor(WidgetStyle(), onCancel = { cancelled = true }, onSave = { saved = true })
+        } }
+        compose.onNodeWithText("Cancel").performClick()
+        compose.runOnIdle { assertTrue(cancelled); assertFalse(saved) }
     }
 
     @SdkSuppress(minSdkVersion = 26)

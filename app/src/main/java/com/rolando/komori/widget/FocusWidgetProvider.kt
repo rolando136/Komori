@@ -14,6 +14,7 @@ import android.view.View
 import android.widget.RemoteViews
 import android.widget.Toast
 import androidx.core.graphics.drawable.toBitmap
+import androidx.core.graphics.ColorUtils
 import com.rolando.komori.KomoriApplication
 import com.rolando.komori.MainActivity
 import com.rolando.komori.R
@@ -36,11 +37,6 @@ import java.util.Locale
 
 class FocusWidgetProvider : AppWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_WALLPAPER_CHANGED) {
-            val manager = AppWidgetManager.getInstance(context)
-            onUpdate(context, manager, manager.getAppWidgetIds(ComponentName(context, FocusWidgetProvider::class.java)))
-            return
-        }
         if (intent.action != ACTION_COMPLETE) {
             super.onReceive(context, intent)
             return
@@ -85,6 +81,12 @@ class FocusWidgetProvider : AppWidgetProvider() {
         onUpdate(context, manager, intArrayOf(id))
     }
 
+    override fun onDeleted(context: Context, ids: IntArray) = WidgetAppearance.delete(context, ids)
+
+    override fun onRestored(context: Context, oldWidgetIds: IntArray, newWidgetIds: IntArray) {
+        WidgetAppearance.restore(context, oldWidgetIds, newWidgetIds)
+    }
+
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         val pendingResult = goAsync()
         scope.launch {
@@ -119,15 +121,16 @@ class FocusWidgetProvider : AppWidgetProvider() {
             if (ids.isEmpty()) return
             val manager = AppWidgetManager.getInstance(context)
             ids.forEach { widgetId ->
-                val height = manager.getAppWidgetOptions(widgetId)
-                    .getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 280)
-                val rowCount = ((height - 112) / 56).coerceIn(1, 3)
-                manager.updateAppWidget(widgetId, createViews(context, tasks, rowCount))
+                val options = manager.getAppWidgetOptions(widgetId)
+                val height = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 280).coerceAtLeast(140)
+                val rowCount = ((height - 112) / 64).coerceIn(1, 3)
+                manager.updateAppWidget(widgetId, createViews(context, tasks, rowCount, widgetId))
             }
         }
 
         internal fun createViews(context: Context, tasks: List<Task>, rowCount: Int = 3,
-            darkWallpaper: Boolean = WidgetWallpaper.isDark(context)): RemoteViews {
+            widgetId: Int = AppWidgetManager.INVALID_APPWIDGET_ID,
+            style: WidgetStyle = WidgetAppearance.read(context, widgetId)): RemoteViews {
             val today = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) LocalDate.now() else null
             val renderedDate = dateKey()
             val active = tasks.filter { task ->
@@ -138,43 +141,34 @@ class FocusWidgetProvider : AppWidgetProvider() {
                 }
             }.sortedWith(compareBy<Task> { it.priority.ordinal * -1 }.thenBy(nullsLast()) { it.time })
             val views = RemoteViews(context.packageName, R.layout.widget_focus)
-            val glass = WidgetAppearance.read(context) == WidgetTheme.Glass
-            val background = when {
-                glass && darkWallpaper -> R.drawable.widget_auto_glass_dark
-                glass -> R.drawable.widget_auto_glass_light
-                darkWallpaper -> R.drawable.widget_auto_solid_dark
-                else -> R.drawable.widget_auto_solid_light
-            }
-            val card = when {
-                glass && darkWallpaper -> R.drawable.widget_auto_card_glass_dark
-                glass -> R.drawable.widget_auto_card_glass_light
-                darkWallpaper -> R.drawable.widget_auto_card_dark
-                else -> R.drawable.widget_auto_card_light
-            }
-            val foreground = context.getColor(if (darkWallpaper) R.color.widget_auto_dark_text else R.color.widget_auto_light_text)
-            val secondary = context.getColor(if (darkWallpaper) R.color.widget_auto_dark_secondary else R.color.widget_auto_light_secondary)
-            val accent = context.getColor(if (darkWallpaper) R.color.widget_auto_dark_accent else R.color.widget_auto_light_accent)
-            views.setInt(R.id.widget_root, "setBackgroundResource", background)
-            views.setInt(R.id.widget_summary, "setBackgroundResource", card)
-            views.setTextColor(R.id.widget_focus_title, foreground)
-            views.setTextColor(R.id.widget_summary, accent)
+            val foreground = style.foreground
+            val secondary = ColorUtils.blendARGB(foreground, style.color, 0.18f)
+            setSurface(views, R.id.widget_background_image, R.drawable.widget_plain_background, style.color, style.opacity)
+            views.setTextColor(R.id.widget_header, foreground)
             views.setTextColor(R.id.widget_date, secondary)
             views.setTextColor(R.id.widget_empty, secondary)
             val checkbox = requireNotNull(context.getDrawable(R.drawable.widget_checkbox)).mutate()
-            checkbox.setTint(accent)
+            checkbox.setTint(foreground)
             val checkboxSize = (22 * context.resources.displayMetrics.density).toInt().coerceAtLeast(1)
             val checkboxBitmap = checkbox.toBitmap(checkboxSize, checkboxSize)
+            val editIcon = requireNotNull(context.getDrawable(R.drawable.widget_edit_icon)).mutate()
+            editIcon.setTint(foreground)
+            views.setImageViewBitmap(R.id.widget_edit, editIcon.toBitmap(checkboxSize, checkboxSize))
+            val edit = Intent(context, WidgetEditorActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                data = Uri.parse("komori://widget/$widgetId/edit")
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+            }
+            views.setOnClickPendingIntent(R.id.widget_edit, PendingIntent.getActivity(context, widgetId, edit,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
             views.setTextViewText(R.id.widget_date, today?.format(DateTimeFormatter.ofPattern("EEE, MMM d"))
                 ?: context.getString(R.string.app_name))
             val openApp = PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            views.setTextViewText(R.id.widget_summary, active.size.toString())
-            views.setContentDescription(R.id.widget_summary, context.resources.getQuantityString(
-                R.plurals.widget_task_count, active.size, active.size))
             views.removeAllViews(R.id.widget_tasks)
             active.take(rowCount).forEach { task ->
                 val row = RemoteViews(context.packageName, R.layout.widget_task_row)
-                row.setInt(R.id.widget_task_card, "setBackgroundResource", card)
+                setSurface(row, R.id.widget_card_image, R.drawable.widget_plain_card, style.surface, style.opacity)
                 row.setTextColor(R.id.widget_task_title, foreground)
                 row.setTextColor(R.id.widget_task_detail, secondary)
                 row.setImageViewBitmap(R.id.widget_task_check, checkboxBitmap)
@@ -206,10 +200,16 @@ class FocusWidgetProvider : AppWidgetProvider() {
             }
             views.setViewVisibility(R.id.widget_empty, if (active.isEmpty()) View.VISIBLE else View.GONE)
             views.setViewVisibility(R.id.widget_tasks, if (active.isEmpty()) View.GONE else View.VISIBLE)
-            views.setViewVisibility(R.id.widget_summary, if (active.isEmpty()) View.GONE else View.VISIBLE)
             views.setOnClickPendingIntent(R.id.widget_header, openApp)
             views.setOnClickPendingIntent(R.id.widget_empty, openApp)
             return views
+        }
+
+        private fun setSurface(views: RemoteViews, id: Int, drawable: Int, color: Int, opacity: Float) {
+            // Native shapes retain a circular dp radius at any launcher size; bitmaps stretch it.
+            views.setImageViewResource(id, drawable)
+            views.setInt(id, "setColorFilter", color)
+            views.setInt(id, "setImageAlpha", (opacity * 255).toInt())
         }
     }
 }

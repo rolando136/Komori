@@ -1,13 +1,7 @@
 <resources>
     <string name="widget_title">Komori · My Focus</string>
     <string name="widget_focus">My Focus</string>
-    <string name="widget_theme_title">Home-screen widget</string>
-    <string name="widget_theme_solid">Solid</string>
-    <string name="widget_theme_solid_detail">Subtle wallpaper-colored cards</string>
-    <string name="widget_theme_glass">Frosted glass</string>
-    <string name="widget_theme_glass_detail">Plain translucent wallpaper-tinted surfaces</string>
-    <string name="widget_theme_hint">All widgets automatically use a light or dark appearance based on your home wallpaper’s overall brightness (Android 8.1+). If wallpaper colors are unavailable, system appearance is used. Frosted glass is translucent, not true wallpaper blur.</string>
-    <string name="widget_theme_failed">Could not update widget theme. Please try again.</string>
+    <string name="widget_edit">Edit widget appearance</string>
     <string name="widget_complete">Complete task</string>
     <string name="widget_complete_named">Complete %1$s</string>
     <string name="widget_completed">Task completed</string>
@@ -15,12 +9,8 @@
     <string name="widget_update_failed">Could not update task. Please try again.</string>
     <string name="widget_task_detail">%1$s priority</string>
     <string name="widget_subtask_detail">%1$d/%2$d subtasks</string>
-    <string name="widget_description">Your focus tasks, with colors that complement your wallpaper.</string>
+    <string name="widget_description">Your focus tasks, with customizable colors and opacity.</string>
     <string name="widget_empty">A quiet moment. No tasks due.</string>
-    <plurals name="widget_task_count">
-        <item quantity="one">%d task to focus on</item>
-        <item quantity="other">%d tasks to focus on</item>
-    </plurals>
     <color name="widget_background">#EDF2E9</color>
     <color name="widget_foreground">#253024</color>
     <color name="widget_secondary">#616A60</color>
