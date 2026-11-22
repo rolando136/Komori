@@ -177,9 +177,8 @@ fun ScheduleScreen(
 
     LaunchedEffect(pagerState.currentPage) {
         val weeksOffset = pagerState.currentPage - initialPage
-        val today = LocalDate.now()
-        val currentViewMonday = today
-            .minusDays((today.dayOfWeek.value - 1).toLong())
+        val currentViewMonday = todayDate
+            .minusDays((todayDate.dayOfWeek.value - 1).toLong())
             .plusWeeks(weeksOffset.toLong())
 
         onVisibleDateChanged(currentViewMonday)
@@ -187,9 +186,10 @@ fun ScheduleScreen(
 
     LaunchedEffect(jumpToDate) {
         jumpToDate?.let { target ->
-            val today = LocalDate.now()
-            val weeksDiff = ChronoUnit.WEEKS.between(today, target)
-            pagerState.scrollToPage(initialPage + weeksDiff.toInt())
+            val baseMonday = todayDate.minusDays((todayDate.dayOfWeek.value - 1).toLong())
+            val targetMonday = target.minusDays((target.dayOfWeek.value - 1).toLong())
+            val weeksDiff = ChronoUnit.WEEKS.between(baseMonday, targetMonday)
+            pagerState.scrollToPage((initialPage + weeksDiff.toInt()).coerceIn(0, pagerState.pageCount - 1))
         }
     }
 

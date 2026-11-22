@@ -9,6 +9,9 @@ import java.io.File
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -23,9 +26,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,6 +47,9 @@ import com.adamglin.phosphoricons.bold.UploadSimple
 import com.rolando.komori.data.ThemeManager
 import com.rolando.komori.ui.TaskViewModel
 import com.rolando.komori.ui.theme.*
+import com.rolando.komori.R
+import com.rolando.komori.widget.WidgetAppearance
+import com.rolando.komori.widget.WidgetTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -60,6 +70,8 @@ fun SettingsScreen(
     val themeManager = remember { ThemeManager(context) }
     val isDarkTheme by themeManager.isDarkTheme.collectAsState(initial = false)
     val scope = rememberCoroutineScope()
+    var widgetTheme by remember { mutableStateOf(WidgetAppearance.read(context)) }
+    var savingWidgetTheme by remember { mutableStateOf(false) }
 
     var showRestoreConfirmDialog by remember { mutableStateOf(false) }
     var pendingJsonContent by remember { mutableStateOf<String?>(null) }
@@ -205,6 +217,28 @@ fun SettingsScreen(
             ThemeSelector(
                 currentTheme = currentTheme,
                 onThemeSelected = onThemeSelected
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
+            WidgetThemeSelector(
+                selected = widgetTheme,
+                enabled = !savingWidgetTheme,
+                onSelected = { theme ->
+                    scope.launch {
+                        savingWidgetTheme = true
+                        try {
+                            WidgetAppearance.save(context, theme)
+                            widgetTheme = theme
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            widgetTheme = WidgetAppearance.read(context)
+                            Toast.makeText(context, R.string.widget_theme_failed, Toast.LENGTH_SHORT).show()
+                        } finally {
+                            savingWidgetTheme = false
+                        }
+                    }
+                }
             )
 
             Spacer(modifier = Modifier.height(36.dp))
@@ -509,6 +543,51 @@ private fun shareJson(context: Context, json: String) {
 // --- HELPER COMPOSABLES ---
 
 @Composable
+fun WidgetThemeSelector(selected: WidgetTheme, enabled: Boolean = true, onSelected: (WidgetTheme) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().selectableGroup()) {
+        Text(
+            stringResource(R.string.widget_theme_title),
+            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = AppFont, fontWeight = FontWeight.Medium),
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(Modifier.height(12.dp))
+        WidgetTheme.entries.forEach { theme ->
+            val isSelected = selected == theme
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = androidx.compose.foundation.BorderStroke(1.dp,
+                    if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            ) {
+                Row(
+                    modifier = Modifier.selectable(selected = isSelected, enabled = enabled,
+                        role = Role.RadioButton, onClick = { onSelected(theme) }).padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(if (theme == WidgetTheme.Glass) R.string.widget_theme_glass else R.string.widget_theme_solid),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = AppFont, fontWeight = FontWeight.Bold)
+                        )
+                        Text(
+                            stringResource(if (theme == WidgetTheme.Glass) R.string.widget_theme_glass_detail else R.string.widget_theme_solid_detail),
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = AppFont),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    RadioButton(selected = isSelected, onClick = null, enabled = enabled)
+                }
+            }
+        }
+        Text(stringResource(R.string.widget_theme_hint),
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = AppFont),
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
 fun ThemeSelector(
     currentTheme: AppThemeOption,
     onThemeSelected: (AppThemeOption) -> Unit
@@ -531,7 +610,10 @@ fun ThemeSelector(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
             AppThemeOption.entries.forEach { theme ->
                 ThemeCircle(
                     theme = theme,
@@ -557,6 +639,7 @@ fun ThemeCircle(theme: AppThemeOption, isSelected: Boolean, onClick: () -> Unit)
     Box(
         modifier = Modifier
             .size(48.dp)
+            .semantics { contentDescription = theme.name }
             .clip(CircleShape)
             .background(color)
             .border(

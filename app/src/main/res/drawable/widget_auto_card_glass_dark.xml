@@ -1,0 +1,7 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item><shape>
+        <solid android:color="@color/widget_auto_glass_dark_surface" />
+        <corners android:radius="18dp" />
+        <stroke android:width="1dp" android:color="@color/widget_auto_dark_outline" />
+    </shape></item>
+</layer-list>

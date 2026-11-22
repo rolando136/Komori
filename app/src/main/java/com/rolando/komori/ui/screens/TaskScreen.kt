@@ -162,8 +162,7 @@ fun TasksScreen(
 
     var showMonthPicker by remember { mutableStateOf(false) }
     val monthFormatter = remember { DateTimeFormatter.ofPattern("MMMM yyyy") }
-    var headerTitle by remember { mutableStateOf(LocalDate.now().format(monthFormatter)) }
-    var targetJumpDate by remember { mutableStateOf<LocalDate?>(null) }
+    val headerTitle = currentMonth.format(monthFormatter)
 
     val isAnyDialogOpen = showDialog || showScheduleDialog || selectedTask != null ||
             selectedScheduleEvent != null || showMonthPicker ||
@@ -653,7 +652,7 @@ fun TasksScreen(
         TimePickerDialogShim(onDismiss = { showTimePicker = false }, onConfirm = { newTaskTime = LocalTime.of(timeState.hour, timeState.minute); showTimePicker = false }, state = timeState)
     }
 
-    if (showMonthPicker) { MonthYearPickerDialog(initialDate = LocalDate.now(), onDismiss = { showMonthPicker = false }, onConfirm = { selectedDate -> targetJumpDate = selectedDate; showMonthPicker = false }) }
+    if (showMonthPicker) { MonthYearPickerDialog(initialDate = currentMonth, onDismiss = { showMonthPicker = false }, onConfirm = { selectedDate -> jumpToDate = selectedDate; showMonthPicker = false }) }
     if (showScheduleDialog) {
         val today = LocalDate.now(); val defaultTime = LocalTime.of(8, 0)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
